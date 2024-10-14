@@ -57,11 +57,6 @@ start_frame = None
 end_frame = None
 frame_number = 0
 
-# Running to do calculations- the frist time
-# x15 = []
-# y15 = []
-
-
 while cap.isOpened():
     success, image = cap.read()
     if not success:
