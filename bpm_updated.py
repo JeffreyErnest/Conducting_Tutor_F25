@@ -103,7 +103,7 @@ while cap.isOpened():
 
     # Write the annotated frame to the output video
     out.write(annotated_image_bgr)
-    print(f"Frame {frame_number} written to output video.")
+    # print(f"Frame {frame_number} written to output video.")
 
     # Check for user input to start/stop processing
     key = cv2.waitKey(5) & 0xFF
