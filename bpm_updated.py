@@ -21,11 +21,9 @@ frame_rate = 24
 def draw_landmarks_on_image(rgb_image, detection_result):
     pose_landmarks_list = detection_result.pose_landmarks
     annotated_image = np.copy(rgb_image)
-
     # Loop through the detected poses to visualize.
     for idx in range(len(pose_landmarks_list)):
         pose_landmarks = pose_landmarks_list[idx]
-
         # Draw the pose landmarks.
         pose_landmarks_proto = landmark_pb2.NormalizedLandmarkList()
         pose_landmarks_proto.landmark.extend([
@@ -44,12 +42,11 @@ options = PoseLandmarkerOptions(
     base_options=BaseOptions(model_asset_path='pose_landmarker_lite.task'),
     running_mode=VisionRunningMode.VIDEO
 )
-
 # Creates / initializing the poselandmarker
 detector = PoseLandmarker.create_from_options(options)
 
 # For video input:
-cap = cv2.VideoCapture('4-4stacatto(2).mp4')
+cap = cv2.VideoCapture('4-4stacatto(3).mp4')
 
 # Initialize flags and variables
 processing_active = False
@@ -57,13 +54,18 @@ start_frame = None
 end_frame = None
 frame_number = 0
 
+# Initialize VideoWriter for output video
+frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+fps = int(cap.get(cv2.CAP_PROP_FPS))
+out = cv2.VideoWriter('annotated_output.avi', cv2.VideoWriter_fourcc(*'MJPG'), fps, (frame_width, frame_height))
+
 # Running to do calculations- the first time
 while cap.isOpened():
     success, image = cap.read()
     if not success:
-        # If the 'e' key wasn't pressed, set the end frame to the last processed frame
         if processing_active and end_frame is None:
-            end_frame = frame_number - 1  # Set to the last valid frame number
+            end_frame = frame_number - 1
             print(f"Processing stopped at the last frame: {end_frame}")
         break
 
@@ -74,7 +76,6 @@ while cap.isOpened():
 
     frame_timestamp_ms = round(cap.get(cv2.CAP_PROP_POS_MSEC))
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
     detection_result = detector.detect_for_video(mp_image, frame_timestamp_ms)
     annotated_image = draw_landmarks_on_image(image_rgb, detection_result)
@@ -82,15 +83,13 @@ while cap.isOpened():
 
     # Only process frames between start_frame and end_frame
     pose_landmarks_list = detection_result.pose_landmarks
-
     if processing_active and start_frame is not None and (end_frame is None or frame_number <= end_frame):
-        if pose_landmarks_list:  # Ensure there are pose landmarks detected
-            for landmarks in pose_landmarks_list:  # Loop through each set of detected landmarks
-                if len(landmarks) > 15:  # Ensure the 15th landmark exists
-                    # Capture x and y coordinates of the 15th landmark (index 14)
-                    x15 = landmarks[15].x  # x coordinate of the 15th landmark
-                    y15 = landmarks[15].y  # y coordinate of the 15th landmark
-                    frame_array.append((x15, y15))  # Store the coordinates as a tuple
+        if pose_landmarks_list:
+            for landmarks in pose_landmarks_list:
+                if len(landmarks) > 15:
+                    x15 = landmarks[15].x
+                    y15 = landmarks[15].y
+                    frame_array.append((x15, y15))
 
     # After the loop, prepare the x and y lists from frame_array
     x = [coord[0] for coord in frame_array]  # x coordinates of 15th landmark
@@ -101,6 +100,10 @@ while cap.isOpened():
 
     # Show the video feed
     cv2.imshow('Video Feed', annotated_image_bgr)
+
+    # Write the annotated frame to the output video
+    out.write(annotated_image_bgr)
+    print(f"Frame {frame_number} written to output video.")
 
     # Check for user input to start/stop processing
     key = cv2.waitKey(5) & 0xFF
@@ -120,6 +123,8 @@ while cap.isOpened():
     frame_number += 1
 
 cap.release()
+out.release()
+cv2.destroyAllWindows()
 
 # If the end frame was never set, default to the last frame
 if end_frame is None:
@@ -128,7 +133,6 @@ if end_frame is None:
 
 # Now that you have start_frame and end_frame, apply beat detection only within that range
 # Extract high and low peaks for x and y coordinates
-
 # Find peaks and valleys in x and y coordinates
 x_peaks, _ = find_peaks(x)
 x_valleys, _ = find_peaks([-val for val in x])
@@ -148,11 +152,9 @@ def filter_significant_points(points, threshold):
 
 # Apply filtering to ensure peaks and valleys are not closer than the threshold
 threshold = 15  # Define a threshold in number of frames
-
 # Filter x_peaks and x_valleys
 filtered_x_peaks = filter_significant_points(x_peaks, threshold)
 filtered_x_valleys = filter_significant_points(x_valleys, threshold)
-
 # Filter y_peaks and y_valleys
 filtered_y_peaks = filter_significant_points(y_peaks, threshold)
 filtered_y_valleys = filter_significant_points(y_valleys, threshold)
@@ -167,22 +169,19 @@ combined_valleys = [int(v) for v in combined_valleys]
 
 # Filter beats within the selected frame range
 filtered_significant_beats = combined_peaks.copy()  # Copy filtered peaks directly
-
 # Similarly, process valleys if needed
 filtered_significant_valleys = combined_valleys.copy()
 filtered_significant_beats.extend(filtered_significant_valleys)  # Append filtered valleys to beats
-
 # Sort the final list of significant beats (peaks and valleys) if needed
 filtered_significant_beats = filter_significant_points(filtered_significant_beats, threshold)
 
 # OpenCV window name for displaying annotated frames
 window_name = 'Annotated Frames'
-
 frame_index = 0
 frame_skip = 1  # Process every frame
 
 # Initialize for second video capture loop
-cap = cv2.VideoCapture('4-4stacatto(2).mp4')
+cap = cv2.VideoCapture('4-4stacatto(3).mp4')
 frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
 frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 size = (frame_width, frame_height)
@@ -196,7 +195,6 @@ font = cv2.FONT_HERSHEY_SIMPLEX
 font_scale = 2  # Adjusted for better visibility
 font_thickness = 2
 font_color = (255, 255, 255)
-
 text_display_duration = 3  # Adjust this value as needed
 text_display_counter = 0
 
@@ -205,7 +203,6 @@ prev_beat = None
 prev_bpm = 0
 bpm = None  # Initialize bpm to avoid the 'name not defined' error
 last_frame_timestamp = 0  # Initialize the timestamp for the first frame
-
 frame_index = 0  # Reset the frame index for the second video processing
 
 # Video frame processing loop
@@ -215,75 +212,58 @@ while cap.isOpened():
         print("Ending processing.")
         break
 
-    # Crop a region of interest (ROI) from the frame
-# Crop a region of interest (ROI) from the frame (Ensure ROI is within frame bounds)
     roi = image[450:900, 600:1500] if image.shape[0] >= 900 and image.shape[1] >= 1500 else image
-    roi_resized = cv2.resize(roi, (frame_width, frame_height))  # Ensure this matches the output size
-    image_bgr = roi_resized  # No need to convert back to BGR if using the final BGR image
+    roi_resized = cv2.resize(roi, (frame_width, frame_height))
+    image_bgr = roi_resized
 
-    # Manually increment timestamp to ensure it's always increasing
-    frame_timestamp_ms = last_frame_timestamp + (1000 / fps)  # Calculate timestamp for the frame in milliseconds
-    last_frame_timestamp = frame_timestamp_ms  # Update last timestamp for the next iteration
+    frame_timestamp_ms = last_frame_timestamp + (1000 / fps)
+    last_frame_timestamp = frame_timestamp_ms
 
-    # image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
+    frame_timestamp_microseconds = int(frame_timestamp_ms * 1000)
 
-    # Convert to microseconds
-    frame_timestamp_microseconds = int(frame_timestamp_ms * 1000)  # Convert milliseconds to microseconds
-
-    # Call detect_for_video on the detector with the manually managed timestamp
     detection_result = detector.detect_for_video(mp_image, frame_timestamp_microseconds)
     annotated_image = draw_landmarks_on_image(image_rgb, detection_result)
     annotated_image_bgr = cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR)
 
-    # Only apply beat detection between start_frame and end_frame
     if start_frame <= frame_index <= end_frame:
-# Only apply beat detection between start_frame and end_frame
-        if start_frame <= frame_index <= end_frame:
-            if frame_index in filtered_significant_beats:
-                text = "Beat!"
-                text_size = cv2.getTextSize(text, font, font_scale, font_thickness)[0]
-                text_x = (image_rgb.shape[1] - text_size[0]) // 2
-                text_y = (image_rgb.shape[0] + text_size[1]) // 2
-                cv2.putText(annotated_image_bgr, text, (text_x, text_y), font, font_scale, font_color, font_thickness)
-
-                if prev_beat is not None:
-                    frames_between_beats = frame_index - prev_beat
-                    time_between_beats = frames_between_beats / frame_rate
-                    bpm = 60 / time_between_beats
-                else:
-                    bpm = prev_bpm
-
-                # Update prev_beat to the current frame index
-                prev_beat = frame_index  # <-- Add this line to update prev_beat
-
-                bpm_info = f'Beats per minute (BPM) at frame {frame_index}: {bpm}\n'
-                output_file = '4-4stacatto(2).mp4_auto_BPM.txt'
-                with open(output_file, 'a') as file:
-                    print(bpm_info, end='')
-                    file.write(bpm_info)
-
-                text_display_counter = text_display_duration
-
+        if frame_index in filtered_significant_beats:
+            text = "Beat!"
+            text_size = cv2.getTextSize(text, font, font_scale, font_thickness)[0]
+            text_x = (image_rgb.shape[1] - text_size[0]) // 2
+            text_y = (image_rgb.shape[0] + text_size[1]) // 2
+            cv2.putText(annotated_image_bgr, text, (text_x, text_y), font, font_scale, font_color, font_thickness)
+            if prev_beat is not None:
+                frames_between_beats = frame_index - prev_beat
+                time_between_beats = frames_between_beats / fps
+                bpm = 60 / time_between_beats
+            else:
+                bpm = prev_bpm
+            prev_beat = frame_index
+            bpm_info = f'Beats per minute (BPM) at frame {frame_index}: {bpm}\n'
+            output_file = '4-4stacatto(2).mp4_auto_BPM.txt'
+            with open(output_file, 'a') as file:
+                print(bpm_info, end='')
+                file.write(bpm_info)
+            text_display_counter = text_display_duration
 
     if text_display_counter > 0:
-        cv2.putText(image_rgb, text, (text_x, text_y), font, font_scale, font_color, font_thickness)
+        cv2.putText(annotated_image_bgr, text, (text_x, text_y), font, font_scale, font_color, font_thickness)
         text_display_counter -= 1
 
-    # Write the frame with the overlayed landmarks and annotations
-    out.write(annotated_image)
-    # Display the current frame number
+    out.write(annotated_image_bgr)
+    print(f"Frame {frame_index} written to output video.")
+
     cv2.putText(annotated_image_bgr, f'Frame: {frame_index}', (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
-    cv2.imshow('Annotated Frames', annotated_image_bgr)  # Show the full frame with landmarks
+    cv2.imshow('Annotated Frames', annotated_image_bgr)
 
-    frame_index += 1  # Increment frame index for next loop
-
-    # Handle user input for starting/stopping processing
     key = cv2.waitKey(5) & 0xFF
-    if key == 27:  # Press ESC to exit
+    if key == 27:
         break
 
-# Release the video capture and writer resources
+    frame_index += 1
+
 cap.release()
 out.release()
 cv2.destroyAllWindows()
