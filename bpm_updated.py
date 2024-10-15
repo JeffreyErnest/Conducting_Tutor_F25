@@ -250,7 +250,7 @@ while cap.isOpened():
         text_display_counter -= 1
 
     out.write(annotated_image_bgr)
-    print(f"Frame {frame_index} written to output video.")
+    # print(f"Frame {frame_index} written to output video.")
 
     cv2.putText(annotated_image_bgr, f'Frame: {frame_index}', (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
     cv2.imshow('Annotated Frames', annotated_image_bgr)
