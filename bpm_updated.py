@@ -7,7 +7,7 @@ import numpy as np
 import time
 from mediapipe.framework.formats import landmark_pb2
 
-# mp_pose = mp.solutions.pose
+
 BaseOptions = mp.tasks.BaseOptions
 PoseLandmarker = mp.tasks.vision.PoseLandmarker
 PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
@@ -92,8 +92,8 @@ while cap.isOpened():
                     frame_array.append((x15, y15))
 
     # After the loop, prepare the x and y lists from frame_array
-    x = [coord[0] for coord in frame_array]  # x coordinates of 15th landmark
-    y = [coord[1] for coord in frame_array]  # y coordinates of 15th landmark
+    x = [coord[0] for coord in frame_array]  
+    y = [coord[1] for coord in frame_array] 
 
     # Display the current frame number
     cv2.putText(image, f'Frame: {frame_number}', (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
@@ -130,9 +130,7 @@ cv2.destroyAllWindows()
 if end_frame is None:
     end_frame = frame_number - 1
     print(f"Processing stopped at the last frame: {end_frame}")
-
-# Now that you have start_frame and end_frame, apply beat detection only within that range
-# Extract high and low peaks for x and y coordinates
+    
 # Find peaks and valleys in x and y coordinates
 x_peaks, _ = find_peaks(x)
 x_valleys, _ = find_peaks([-val for val in x])
@@ -160,19 +158,18 @@ filtered_y_peaks = filter_significant_points(y_peaks, threshold)
 filtered_y_valleys = filter_significant_points(y_valleys, threshold)
 
 # Combine the filtered peaks and valleys
-combined_peaks = sorted(set(x_peaks).union(set(y_peaks)))  # Combine filtered x and y peaks
-combined_valleys = sorted(set(x_valleys).union(set(y_valleys)))  # Combine filtered x and y valleys
+combined_peaks = sorted(set(x_peaks).union(set(y_peaks))) 
+combined_valleys = sorted(set(x_valleys).union(set(y_valleys)))  
 
 # Convert combined_peaks and combined_valleys to standard Python integers for safe processing
 combined_peaks = [int(p) for p in combined_peaks]
 combined_valleys = [int(v) for v in combined_valleys]
 
-# Filter beats within the selected frame range
-filtered_significant_beats = combined_peaks.copy()  # Copy filtered peaks directly
-# Similarly, process valleys if needed
+filtered_significant_beats = combined_peaks.copy()  
+
 filtered_significant_valleys = combined_valleys.copy()
-filtered_significant_beats.extend(filtered_significant_valleys)  # Append filtered valleys to beats
-# Sort the final list of significant beats (peaks and valleys) if needed
+filtered_significant_beats.extend(filtered_significant_valleys) 
+
 filtered_significant_beats = filter_significant_points(filtered_significant_beats, threshold)
 
 # OpenCV window name for displaying annotated frames
@@ -185,25 +182,25 @@ cap = cv2.VideoCapture('4-4stacatto(3).mp4')
 frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
 frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 size = (frame_width, frame_height)
-fps = int(cap.get(cv2.CAP_PROP_FPS))  # Use the actual frame rate of the video if available
+fps = int(cap.get(cv2.CAP_PROP_FPS))  
 
 # Change codec if necessary
 out = cv2.VideoWriter('4-4stacatto(2)_output.avi', cv2.VideoWriter_fourcc(*'MJPG'), fps, size)
 
 # Initialize text properties
 font = cv2.FONT_HERSHEY_SIMPLEX
-font_scale = 2  # Adjusted for better visibility
+font_scale = 2  
 font_thickness = 2
 font_color = (255, 255, 255)
-text_display_duration = 3  # Adjust this value as needed
+text_display_duration = 3  
 text_display_counter = 0
 
 # Initialize variables for beat detection
 prev_beat = None
 prev_bpm = 0
-bpm = None  # Initialize bpm to avoid the 'name not defined' error
-last_frame_timestamp = 0  # Initialize the timestamp for the first frame
-frame_index = 0  # Reset the frame index for the second video processing
+bpm = None  
+last_frame_timestamp = 0
+frame_index = 0  
 
 # Video frame processing loop
 while cap.isOpened():
@@ -268,11 +265,9 @@ cap.release()
 out.release()
 cv2.destroyAllWindows()
 
-# Plot x and y coordinates over time
 plt.figure(figsize=(12, 6))
 plt.plot(range(len(x)), x, label='X Coordinates', color='b', alpha=0.7)
 plt.plot(range(len(y)), y, label='Y Coordinates', color='g', alpha=0.7)
-# Highlight the processed part (start_frame to end_frame)
 plt.axvspan(start_frame, end_frame, color='yellow', alpha=0.3, label="Processed Range")
 plt.plot(filtered_x_peaks, [x[i] for i in filtered_x_peaks], "x", label="X Peaks")
 plt.plot(filtered_x_valleys, [x[i] for i in filtered_x_valleys], "x", label="X Valleys")
