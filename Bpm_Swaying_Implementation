@@ -12,10 +12,12 @@ PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
 
 # Video file 
-videoFileName = 'Marchingband(7).mp4'
+videoFileName = '4-4stacatto(3).mp4'
 videoOutputFileName = videoFileName + '_Full_output'
 plotName = videoFileName + '_Full_coordinates_plot'
-swayPlotName = videoFileName + '_Sway_plot'
+swayPlotName = videoFileName + '_Full_Sway_plot'
+rockingPlotName = videoFileName + '_Rocking_plot'
+handsPlotName = videoFileName + '_Full_Hands_plot'
 
 # 2D array to store coordinates
 frame_array = []
@@ -66,10 +68,19 @@ fps = int(cap.get(cv2.CAP_PROP_FPS))
 out = cv2.VideoWriter(videoOutputFileName + '.avi', cv2.VideoWriter_fourcc(*'MJPG'), fps, (frame_width, frame_height))
 
 # Swaying variables
-default_midpoint = 0
+default_midpoint_x = 0
+default_midpoint_z = 0
 sway_threshold = 0.025  # Threshold for swaying detection
-midpoints = []
+rocking_threshold = 0.1  # Threshold for swaying detection
+midpoints_x = []
+midpoints_z = []
 midpointflag = False
+
+# Lists to store hand coordinates
+left_hand_x = []
+left_hand_y = []
+right_hand_x = []
+right_hand_y = []
 
 # First loop: Perform calculations
 while cap.isOpened():
@@ -92,23 +103,36 @@ while cap.isOpened():
     if processing_active and start_frame is not None and (end_frame is None or frame_number <= end_frame):
         if pose_landmarks_list:
             for landmarks in pose_landmarks_list:
-                if len(landmarks) > 16:
+                if len(landmarks) > 0:
                     x16 = landmarks[16].x
                     y16 = landmarks[16].y
                     frame_array.append((x16, y16))
+                    print(f"Frame {frame_number}: X = {x16}, Y = {y16}")
 
                     x12 = landmarks[12].x
                     x11 = landmarks[11].x
-                    midpoint = abs(x12 - x11) * 0.5 + x12
+                    midpoint_x = abs(x12 - x11) * 0.5 + x12
 
-                    midpoints.append(midpoint)
+                    midpoints_x.append(midpoint_x)
+
+                    z12 = landmarks[12].z
+                    z11 = landmarks[11].z
+                    midpoint_z = (z12 - z11) * 0.5 + z12
+
+                    print(f"Frame {frame_number}: Midpoint Z = {midpoint_z}")
+
+                    midpoints_z.append(midpoint_z)
+
+                    # Store hand coordinates
+                    left_hand_x.append(landmarks[15].x)
+                    left_hand_y.append(landmarks[15].y * -1) #inverts one hand
+                    right_hand_x.append(landmarks[16].x)
+                    right_hand_y.append(landmarks[16].y)
 
                     if midpointflag:
-                        default_midpoint = midpoint
+                        default_midpoint_x = midpoint_x
+                        default_midpoint_z = midpoint_z
                         midpointflag = False
-
-                    # Print midpoint for debugging
-                    print(f"Frame {frame_number}: Midpoint = {midpoint}")
 
     # Display the current frame number
     cv2.putText(image, f'Frame: {frame_number}', (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
@@ -124,13 +148,13 @@ while cap.isOpened():
     if key == ord('s'):  # Press 's' to mark the start frame
         if not processing_active:
             start_frame = frame_number
-            midpointflag = True  # Set the default midpoint
+            midpointflag = True
             processing_active = True
-            print(f"Processing started at frame {start_frame}, Default Midpoint = {default_midpoint}")
+            print(f"Processing started at frame {start_frame}, Default Midpoint X = {default_midpoint_x}, Default Midpoint Z = {default_midpoint_z}")
     elif key == ord('e'):  # Press 'e' to mark the end frame
         if processing_active:
             end_frame = frame_number
-            midpointflag = False  # Reset the default midpoint
+            midpointflag = False
             processing_active = False
             print(f"Processing stopped at frame {end_frame}")
     elif key == 27:  # Press 'ESC' to exit
@@ -260,10 +284,16 @@ while cap.isOpened():
         text_display_counter -= 1
 
     # Swaying
-    if frame_index < len(midpoints):
-        midpoint = midpoints[frame_index]
-        if midpoint > default_midpoint + sway_threshold or midpoint < default_midpoint - sway_threshold:
-            cv2.putText(annotated_image_bgr, "Swaying!", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 2)
+    if frame_index < len(midpoints_x):
+        midpoint_x = midpoints_x[frame_index]
+        if midpoint_x > default_midpoint_x + sway_threshold or midpoint_x < default_midpoint_x - sway_threshold:
+            cv2.putText(annotated_image_bgr, "Swaying", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 2)
+
+    # Rocking
+    if frame_index < len(midpoints_z):
+        midpoint_z = midpoints_z[frame_index]
+        if midpoint_z > default_midpoint_z + rocking_threshold or midpoint_z < default_midpoint_z - rocking_threshold:
+            cv2.putText(annotated_image_bgr, "Rocking", (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 2)
 
     out.write(annotated_image_bgr)
 
@@ -282,16 +312,30 @@ cv2.destroyAllWindows()
 
 # Plot the swaying detection graph
 plt.figure(figsize=(12, 6))
-plt.plot(range(len(midpoints)), midpoints, label='Current Midpoint', color='b', alpha=0.7)
-plt.axhline(y=default_midpoint, color='r', linestyle='-', label='Default Midpoint')
-plt.axhline(y=default_midpoint + sway_threshold, color='r', linestyle='--', label='Upper Threshold')
-plt.axhline(y=default_midpoint - sway_threshold, color='r', linestyle='--', label='Lower Threshold')
+plt.plot(range(len(midpoints_x)), midpoints_x, label='Current Midpoint X', color='b', alpha=0.7)
+plt.axhline(y=default_midpoint_x, color='k', linestyle='-', label='Default Midpoint X')
+plt.axhline(y=default_midpoint_x + sway_threshold, color='r', linestyle='--', label='Upper Threshold X')
+plt.axhline(y=default_midpoint_x - sway_threshold, color='r', linestyle='--', label='Lower Threshold X')
 plt.title('Swaying Detection Over Frame Number')
 plt.xlabel('Frame Number')
-plt.ylabel('Midpoint Value')
+plt.ylabel('Midpoint X Value')
 plt.legend()
 plt.grid(True)
 plt.savefig(swayPlotName + '.png')
+plt.show()
+
+# Plot the rocking detection graph
+plt.figure(figsize=(12, 6))
+plt.plot(range(len(midpoints_z)), midpoints_z, label='Current Midpoint Z', color='b', alpha=0.7)
+plt.axhline(y=default_midpoint_z, color='k', linestyle='-', label='Default Midpoint Z')
+plt.axhline(y=default_midpoint_z + rocking_threshold, color='r', linestyle='--', label='Upper Threshold Z')
+plt.axhline(y=default_midpoint_z - rocking_threshold, color='r', linestyle='--', label='Lower Threshold Z')
+plt.title('Rocking Detection Over Frame Number')
+plt.xlabel('Frame Number')
+plt.ylabel('Midpoint Z Value')
+plt.legend()
+plt.grid(True)
+plt.savefig(rockingPlotName + '.png')
 plt.show()
 
 # Plot the X and Y coordinates graph
@@ -309,6 +353,21 @@ plt.ylabel('Coordinate Value')
 plt.legend()
 plt.grid(True)
 plt.savefig(plotName + '.png')
+plt.show()
+
+# Plot the hand coordinates graph
+plt.figure(figsize=(12, 6))
+plt.plot(range(len(left_hand_x)), [x - left_hand_x[0] for x in left_hand_x], label='Left Hand X', color='b', alpha=0.7)
+plt.plot(range(len(right_hand_x)), [x - right_hand_x[0] for x in right_hand_x], label='Right Hand X', color='g', alpha=0.7)
+plt.plot(range(len(left_hand_y)), [y - left_hand_y[0] for y in left_hand_y], label='Left Hand Y', color='r', alpha=0.7)
+plt.plot(range(len(right_hand_y)), [y - right_hand_y[0] for y in right_hand_y], label='Right Hand Y', color='m', alpha=0.7)
+plt.axhline(y=0, color='k', linestyle='-', label='Default Line')
+plt.title('Hand Coordinates Over Frame Number')
+plt.xlabel('Frame Number')
+plt.ylabel('Coordinate Value')
+plt.legend()
+plt.grid(True)
+plt.savefig(handsPlotName + '.png')
 plt.show()
 
 cv2.destroyAllWindows()
