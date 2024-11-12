@@ -11,12 +11,14 @@ PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
 
 # Video file 
-videoFileName = '4-4stacatto(3).mp4'
+videoFileName = 'ZTest.mp4'
 videoOutputFileName = videoFileName + '_Full_output'
 plotName = videoFileName + '_Full_coordinates_plot'
 swayPlotName = videoFileName + '_Full_Sway_plot'
 rockingPlotName = videoFileName + '_Rocking_plot'
-handsPlotName = videoFileName + '_Full_Hands_plot'
+handsPlotName_X = videoFileName + '_Full_Hands_plot_X'
+handsPlotName_Y = videoFileName + '_Full_Hands_plot_Y'
+coordinatesPlotName = videoFileName + '_Full_coordinates_plot'
 
 # Function to draw landmarks on the image
 def draw_landmarks_on_image(rgb_image, detection_result):
@@ -90,7 +92,7 @@ out = cv2.VideoWriter(videoOutputFileName + '.avi', cv2.VideoWriter_fourcc(*'MJP
 default_midpoint_x = 0
 default_midpoint_z = 0
 sway_threshold = 0.025  # Threshold for swaying detection
-rocking_threshold = 0.1  # Threshold for swaying detection
+rocking_threshold = 0.05  # Threshold for swaying detection
 midpoints_x = []
 midpoints_z = []
 midpointflag = False
@@ -146,7 +148,7 @@ while cap.isOpened():
                     z12, z11 = landmarks[12].z, landmarks[11].z
                         
                     midpoint_x = abs(x12 - x11) * 0.5 + x12
-                    midpoint_z = (z12 - z11) * 0.5 + z12
+                    midpoint_z = z12
                         
                     midpoints_x.append(midpoint_x)
                     midpoints_z.append(midpoint_z)
@@ -367,7 +369,7 @@ plt.xlabel('Frame Number')
 plt.ylabel('Coordinate Value')
 plt.legend()
 plt.grid(True)
-plt.savefig('coordinates_plot.png')
+plt.savefig(coordinatesPlotName +'.png')
 plt.show()
 
 # Plot x and y coordinates
@@ -407,19 +409,30 @@ plt.grid(True)
 plt.savefig(rockingPlotName + '.png')
 plt.show()
 
-# Plot the hand coordinates graph
+# Plot the hand coordinates graph x 
 plt.figure(figsize=(12, 6))
 plt.plot(range(len(left_hand_x)), [x - left_hand_x[0] for x in left_hand_x], label='Left Hand X', color='b', alpha=0.7)
 plt.plot(range(len(right_hand_x)), [x - right_hand_x[0] for x in right_hand_x], label='Right Hand X', color='g', alpha=0.7)
-plt.plot(range(len(left_hand_y)), [y - left_hand_y[0] for y in left_hand_y], label='Left Hand Y', color='r', alpha=0.7)
-plt.plot(range(len(right_hand_y)), [y - right_hand_y[0] for y in right_hand_y], label='Right Hand Y', color='m', alpha=0.7)
 plt.axhline(y=0, color='k', linestyle='-', label='Default Line')
-plt.title('Hand Coordinates Over Frame Number')
+plt.title('Hands X Coordinates Over Frame Number')
 plt.xlabel('Frame Number')
 plt.ylabel('Coordinate Value')
 plt.legend()
 plt.grid(True)
-plt.savefig(handsPlotName + '.png')
+plt.savefig(handsPlotName_X + '.png')
+plt.show()
+
+# Plot the hand coordinates graph y 
+plt.figure(figsize=(12, 6))
+plt.plot(range(len(left_hand_y)), [y - left_hand_y[0] for y in left_hand_y], label='Left Hand Y', color='r', alpha=0.7)
+plt.plot(range(len(right_hand_y)), [y - right_hand_y[0] for y in right_hand_y], label='Right Hand Y', color='m', alpha=0.7)
+plt.axhline(y=0, color='k', linestyle='-', label='Default Line')
+plt.title('Hands Y Coordinates Over Frame Number')
+plt.xlabel('Frame Number')
+plt.ylabel('Coordinate Value')
+plt.legend()
+plt.grid(True)
+plt.savefig(handsPlotName_Y + '.png')
 plt.show()
 
 cv2.destroyAllWindows()
