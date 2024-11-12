@@ -70,6 +70,10 @@ text_display_counter = 0
 # For video input:
 cap = cv2.VideoCapture(videoFileName)
 
+if not cap.isOpened():
+    print("Error: Could not open video file.")
+    exit()
+
 # Initialize variables for beat detection and BPM calculation
 bpm_window = 30  # Time window in seconds for BPM calculation
 fps = int(cap.get(cv2.CAP_PROP_FPS))
