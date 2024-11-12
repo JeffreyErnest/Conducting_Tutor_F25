@@ -379,7 +379,6 @@ plt.grid(True)
 plt.savefig(coordinatesPlotName +'.png')
 plt.show()
 
-# Plot x and y coordinates
 # Create the figure
 plt.figure(figsize=(12, 6))
 
@@ -388,13 +387,16 @@ valid_mask = ~(np.isnan(x_proc) | np.isnan(y_proc))
 x_valid = x_proc[valid_mask]
 y_valid = y_proc[valid_mask]
 
+# Invert the Y coordinates to match natural movement
+y_valid = -y_valid  
+
 # Create points for the line
 points = np.array([x_valid, y_valid]).T.reshape(-1, 1, 2)
 segments = np.concatenate([points[:-1], points[1:]], axis=1)
 
 # Create a custom colormap from blue to purple
 colors = ['blue', 'purple']
-n_bins = len(x_valid)  # Number of color gradients
+n_bins = len(x_valid)
 custom_cmap = LinearSegmentedColormap.from_list("custom", colors, N=n_bins)
 
 # Create an array of values for coloring
@@ -416,9 +418,13 @@ cbar.set_label('Frame Number')
 # Add labels and title
 plt.xlabel("X-Coords")
 plt.ylabel("Y-Coords")
-plt.title("X and Y Coordinates in Video")
-plt.legend()
-plt.savefig(coordinatesPlotName + '_gradient.png')
+plt.title("Conducting Pattern")
+
+# Add grid for better readability
+plt.grid(True, linestyle='--', alpha=0.7)
+
+# Save and show the plot
+plt.savefig(coordinatesPlotName + '_clean_pattern.png', bbox_inches='tight')
 plt.show()
 
 # Plot the swaying detection graph
