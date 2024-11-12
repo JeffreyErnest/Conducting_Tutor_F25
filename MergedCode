@@ -165,9 +165,6 @@ while cap.isOpened():
     # Display the current frame number
     cv2.putText(image, f'Frame: {frame_number}', (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
 
-    # Show the video feed
-    # cv2.imshow('Video Feed', annotated_image_bgr)
-
     # Write the annotated frame to the output video
     out.write(annotated_image_bgr)
 
@@ -200,19 +197,12 @@ cv2.destroyAllWindows()
 
 print("Processing intervals:", processing_intervals)
 
-
-# # If the end frame was never set, default to the last frame
-# if end_frame is None:
-#     end_frame = frame_number - 1
-#     print(f"Processing stopped at the last frame: {end_frame}")
+detector = PoseLandmarker.create_from_options(options)
 
 x = [coord[0] for coord in frame_array]
 y = [coord[1] for coord in frame_array]
+
 # Find peaks and valleys in x and y coordinates
-# x_peaks, _ = find_peaks([coord[0] for coord in frame_array])
-# x_valleys, _ = find_peaks([-coord[0] for coord in frame_array])
-# y_peaks, _ = find_peaks([coord[1] for coord in frame_array])
-# y_valleys, _ = find_peaks([-coord[1] for coord in frame_array])
 x_peaks, _ = find_peaks(x)
 x_valleys, _ = find_peaks([-val for val in x])
 y_peaks, _ = find_peaks(y)
@@ -244,33 +234,11 @@ def filter_significant_points(points, threshold):
             filtered_points.append(points[i])
     return filtered_points
 
-# Apply filtering to ensure peaks and valleys are not closer than the threshold
 threshold = 10  # Define a threshold in number of frames
-# filtered_x_peaks = filter_significant_points(x_peaks, threshold)
-# filtered_x_valleys = filter_significant_points(x_valleys, threshold)
-# filtered_y_peaks = filter_significant_points(y_peaks, threshold)
-# filtered_y_valleys = filter_significant_points(y_valleys, threshold)
 
 significant_beats = sorted(set(x_peaks_proc + x_valleys_proc + y_peaks_proc + y_valleys_proc))
 filtered_significant_beats = filter_significant_points(significant_beats, threshold)
-
-# Combine the filtered peaks and valleys
-# combined_peaks = sorted(set(x_peaks).union(set(y_peaks))) 
-# combined_valleys = sorted(set(x_valleys).union(set(y_valleys)))  
-
-# Convert combined_peaks and combined_valleys to standard Python integers for safe processing
-# combined_peaks = [int(p) for p in combined_peaks]
-# combined_valleys = [int(v) for v in combined_valleys]
-
-# filtered_significant_beats = combined_peaks.copy()  
-# filtered_significant_valleys = combined_valleys.copy()
-# filtered_significant_beats.extend(filtered_significant_valleys) 
-# filtered_significant_beats = filter_significant_points(filtered_significant_beats, threshold)
-
-# OpenCV window name for displaying annotated frames
-# window_name = 'Annotated Frames'
 frame_index = 0
-# frame_skip = 1  # Process every frame
 
 # Initialize for second video capture loop
 cap = cv2.VideoCapture(videoFileName)
@@ -289,15 +257,6 @@ font_thickness = 2
 font_color = (255, 255, 255)
 text_display_duration = 3  
 text_display_counter = 0
-
-# Initialize variables for beat detection
-# prev_beat = None
-# prev_bpm = 0
-# bpm = None  
-# last_frame_timestamp = 0
-frame_index = 0  
-
-detector = PoseLandmarker.create_from_options(options)
 
 def is_within_intervals(frame_idx, intervals):
     return any(start <= frame_idx <= end for start, end in intervals)
@@ -357,11 +316,6 @@ while cap.isOpened():
             if text_display_counter > 0:
                 cv2.putText(annotated_image_bgr, "Beat!", (text_x, text_y), font, font_scale, font_color, font_thickness)
                 text_display_counter -= 1  # Decrement counter
-
-    # # Annotate the frame number and display it
-    # cv2.putText(annotated_image_bgr, f'Frame: {frame_index}', (10, 50), font, 1, font_color, 2)
-    # cv2.imshow('Output Video', annotated_image_bgr)
-    # out.write(annotated_image_bgr)
 
     # Swaying
     if frame_index < len(midpoints_x):
@@ -452,23 +406,6 @@ plt.legend()
 plt.grid(True)
 plt.savefig(rockingPlotName + '.png')
 plt.show()
-
-# Plot the X and Y coordinates graph
-# plt.figure(figsize=(12, 6))
-# plt.plot(range(len(frame_array)), [coord[0] for coord in frame_array], label='X Coordinates', color='b', alpha=0.7)
-# plt.plot(range(len(frame_array)), [coord[1] for coord in frame_array], label='Y Coordinates', color='g', alpha=0.7)
-# plt.axvspan(start_frame, end_frame, color='yellow', alpha=0.3, label="Processed Range")
-# plt.plot(filtered_x_peaks, [frame_array[i][0] for i in filtered_x_peaks], "x", label="X Peaks")
-# plt.plot(filtered_x_valleys, [frame_array[i][0] for i in filtered_x_valleys], "x", label="X Valleys")
-# plt.plot(filtered_y_peaks, [frame_array[i][1] for i in filtered_y_peaks], "o", label="Y Peaks")
-# plt.plot(filtered_y_valleys, [frame_array[i][1] for i in filtered_y_valleys], "o", label="Y Valleys")
-# plt.title('X and Y Coordinates Over Frame Number')
-# plt.xlabel('Frame Number')
-# plt.ylabel('Coordinate Value')
-# plt.legend()
-# plt.grid(True)
-# plt.savefig(plotName + '.png')
-# plt.show()
 
 # Plot the hand coordinates graph
 plt.figure(figsize=(12, 6))
