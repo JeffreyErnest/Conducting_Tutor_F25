@@ -4,6 +4,8 @@ import mediapipe as mp
 from scipy.signal import find_peaks
 import numpy as np
 from mediapipe.framework.formats import landmark_pb2
+from matplotlib.collections import LineCollection
+from matplotlib.colors import LinearSegmentedColormap
 
 BaseOptions = mp.tasks.BaseOptions
 PoseLandmarker = mp.tasks.vision.PoseLandmarker
@@ -11,9 +13,10 @@ PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
 
 # Video file 
-videoFileName = 'ZTest.mp4'
+videoFileName = '4-4stacatto(3).mp4'
 videoOutputFileName = videoFileName + '_Full_output'
 plotName = videoFileName + '_Full_coordinates_plot'
+oordinatesPlotName = videoFileName + '_gradient.png'
 swayPlotName = videoFileName + '_Full_Sway_plot'
 rockingPlotName = videoFileName + '_Rocking_plot'
 handsPlotName_X = videoFileName + '_Full_Hands_plot_X'
@@ -43,7 +46,7 @@ def draw_landmarks_on_image(rgb_image, detection_result):
 
 # Create a PoseLandmarker object
 options = PoseLandmarkerOptions(
-    base_options=BaseOptions(model_asset_path='pose_landmarker_full.task'),
+    base_options=BaseOptions(model_asset_path='pose_landmarker_lite.task'),
     running_mode=VisionRunningMode.VIDEO
 )
 
@@ -230,20 +233,61 @@ x_valleys_proc = list(x_valleys_proc)
 y_peaks_proc = list(y_peaks_proc)
 y_valleys_proc = list(y_valleys_proc)
 
-# Filter peaks based on a frame threshold
-def filter_significant_points(points, threshold):
-    if len(points) == 0:
-        return []
-    filtered_points = [points[0]]
-    for i in range(1, len(points)):
-        if points[i] - filtered_points[-1] > threshold:
-            filtered_points.append(points[i])
+threshold = 10
+#Threshold to see when peaks and valleys are going to be part of the same "beat"
+proximity_threshold = 5
+def filter_significant_points(x_peaks_proc, x_valleys_proc, y_peaks_proc, y_valleys_proc, threshold, proximity_threshold):
+    # Combine all points but keep track of which are Y points
+    all_points = []
+    for frame in x_peaks_proc:
+        all_points.append((frame, False))  # False indicates not a Y point
+    for frame in x_valleys_proc:
+        all_points.append((frame, False))
+    for frame in y_peaks_proc:
+        all_points.append((frame, True))   # True indicates Y point
+    for frame in y_valleys_proc:
+        all_points.append((frame, True))
+    
+    # Sort by frame number
+    all_points.sort(key=lambda x: x[0])
+    
+    filtered_points = []
+    last_added_frame = -threshold
+    
+    i = 0
+    while i < len(all_points):
+        current_frame = all_points[i][0]
+        
+        # Skip if too close to last added beat
+        if current_frame - last_added_frame < threshold:
+            i += 1
+            continue
+        
+        # Look ahead for nearby points
+        nearby_points = []
+        j = i
+        while j < len(all_points) and all_points[j][0] - current_frame <= proximity_threshold:
+            nearby_points.append(all_points[j])
+            j += 1
+        
+        # Check if any nearby points are Y points
+        y_points = [p for p in nearby_points if p[1]]  # p[1] is True for Y points
+        
+        if y_points:
+            # Use the first Y point in the group
+            filtered_points.append(y_points[0][0])
+            last_added_frame = y_points[0][0]
+        else:
+            # No Y points nearby, use the first point in the group
+            filtered_points.append(nearby_points[0][0])
+            last_added_frame = nearby_points[0][0]
+        
+        i = j  # Skip past all nearby points
+            
     return filtered_points
 
-threshold = 10  # Define a threshold in number of frames
-
-significant_beats = sorted(set(x_peaks_proc + x_valleys_proc + y_peaks_proc + y_valleys_proc))
-filtered_significant_beats = filter_significant_points(significant_beats, threshold)
+# Use the function
+filtered_significant_beats = filter_significant_points(x_peaks_proc,  x_valleys_proc,  y_peaks_proc, y_valleys_proc, threshold, proximity_threshold)
 frame_index = 0
 
 # Initialize for second video capture loop
@@ -376,13 +420,52 @@ plt.grid(True)
 plt.savefig(coordinatesPlotName +'.png')
 plt.show()
 
-# Plot x and y coordinates
-plt.figure(figsize=(10, 6))
-plt.plot(x_proc, y_proc, '-', color='blue', label="Coordinate points")  # Scatter plot of (x, y) points
+# Create the figure
+plt.figure(figsize=(12, 6))
+
+# Filter out NaN values and create valid points
+valid_mask = ~(np.isnan(x_proc) | np.isnan(y_proc))
+x_valid = x_proc[valid_mask]
+y_valid = y_proc[valid_mask]
+
+# Invert the Y coordinates to match natural movement
+y_valid = -y_valid  
+
+# Create points for the line
+points = np.array([x_valid, y_valid]).T.reshape(-1, 1, 2)
+segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+# Create a custom colormap from blue to purple
+colors = ['blue', 'purple']
+n_bins = len(x_valid)
+custom_cmap = LinearSegmentedColormap.from_list("custom", colors, N=n_bins)
+
+# Create an array of values for coloring
+norm = plt.Normalize(0, len(x_valid))
+lc = LineCollection(segments, cmap=custom_cmap, norm=norm)
+lc.set_array(np.arange(len(x_valid)))
+
+# Create the plot
+plt.gca().add_collection(lc)
+
+# Set axis limits using valid data points
+plt.xlim(np.nanmin(x_valid), np.nanmax(x_valid))
+plt.ylim(np.nanmin(y_valid), np.nanmax(y_valid))
+
+# Add colorbar to show the gradient
+cbar = plt.colorbar(lc)
+cbar.set_label('Frame Number')
+
+# Add labels and title
 plt.xlabel("X-Coords")
 plt.ylabel("Y-Coords")
-plt.title("X and Y Coordinates in Video")
-plt.legend()
+plt.title("Conducting Pattern")
+
+# Add grid for better readability
+plt.grid(True, linestyle='--', alpha=0.7)
+
+# Save and show the plot
+plt.savefig(coordinatesPlotName + '_clean_pattern.png', bbox_inches='tight')
 plt.show()
 
 # Plot the swaying detection graph
