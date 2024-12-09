@@ -1,5 +1,6 @@
 # Conducting_Tutor
 
+(NOTES: I don't know if this implaments Laylahs updated beat dectection. I believe so but i don't 100% remember)
 # Project Overview
 
 This project processes video data to detect conducting movements and generate visualizations. Below is a brief description of each file in the project:
