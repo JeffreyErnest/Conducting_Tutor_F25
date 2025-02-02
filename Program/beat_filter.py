@@ -12,57 +12,6 @@ def filter_significant_points(points, threshold):
             
     return filtered_points
 
-proximity_threshold = 5
-def filter_significant_points(x_peaks_proc, x_valleys_proc, y_peaks_proc, y_valleys_proc, threshold, proximity_threshold):
-    # Combine all points but keep track of which are Y points
-    all_points = []
-    for frame in x_peaks_proc:
-        all_points.append((frame, False))  # False indicates not a Y point
-    for frame in x_valleys_proc:
-        all_points.append((frame, False))
-    for frame in y_peaks_proc:
-        all_points.append((frame, True))   # True indicates Y point
-    for frame in y_valleys_proc:
-        all_points.append((frame, True))
-    
-    # Sort by frame number
-    all_points.sort(key=lambda x: x[0])
-    
-    filtered_points = []
-    last_added_frame = -threshold
-    
-    i = 0
-    while i < len(all_points):
-        current_frame = all_points[i][0]
-        
-        # Skip if too close to last added beat
-        if current_frame - last_added_frame < threshold:
-            i += 1
-            continue
-        
-        # Look ahead for nearby points
-        nearby_points = []
-        j = i
-        while j < len(all_points) and all_points[j][0] - current_frame <= proximity_threshold:
-            nearby_points.append(all_points[j])
-            j += 1
-        
-        # Check if any nearby points are Y points
-        y_points = [p for p in nearby_points if p[1]]  # p[1] is True for Y points
-        
-        if y_points:
-            # Use the first Y point in the group
-            filtered_points.append(y_points[0][0])
-            last_added_frame = y_points[0][0]
-        else:
-            # No Y points nearby, use the first point in the group
-            filtered_points.append(nearby_points[0][0])
-            last_added_frame = nearby_points[0][0]
-        
-        i = j  # Skip past all nearby points
-            
-    return filtered_points
-
 # analyzes movement data to detect conducting beats
 def filter_beats(frame_array, processed_frame_array):
     print("\n=== Beat Filter Debug Information ===")
