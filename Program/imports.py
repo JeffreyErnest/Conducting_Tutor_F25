@@ -5,6 +5,7 @@ from matplotlib import pyplot as plt
 from matplotlib.collections import LineCollection
 from matplotlib.colors import LinearSegmentedColormap
 from scipy.signal import find_peaks
+from numpy import mean
 
 # Mediapipe imports
 import mediapipe as mp

@@ -21,7 +21,7 @@ def process_frame(cap, detector, image):
     return annotated_image_bgr, detection_result
 
 # processes landmarks for each frame, tracking hand positions and movement
-def process_landmarks(detection_result, frame_array, processed_frame_array, processing_active, swaying_detector, mirror_dectector):
+def process_landmarks(detection_result, frame_array, processed_frame_array, processing_active, swaying_detector, mirror_detector):
     pose_landmarks_list = detection_result.pose_landmarks
     if pose_landmarks_list:
         for landmarks in pose_landmarks_list:
@@ -38,11 +38,12 @@ def process_landmarks(detection_result, frame_array, processed_frame_array, proc
                     processed_frame_array.append((np.nan, np.nan))
 
                 # update movement detectors
-                mirror_dectector.mirror_calculation(landmarks[15].x, landmarks[15].y, landmarks[16].x, landmarks[16].y)
+                mirror_detector.mirror_calculation(landmarks[15].x, landmarks[15].y, landmarks[16].x, landmarks[16].y)
                 swaying_detector.midpoint_calculation(landmarks[12].x, landmarks[11].x)
                 
-                if processing_active:
-                    swaying_detector.set_midpoint()
+                # Set the midpoint when processing starts
+                if processing_active and not swaying_detector.midpointflag:
+                    swaying_detector.set_midpoint()  # This will set the default midpoint only when processing starts
     return
 
 # handles keyboard input for starting/stopping processing and exiting

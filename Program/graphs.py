@@ -7,7 +7,11 @@ def generate_all_graphs(cycle_one):
     
     hand_path_graph(cycle_one.x, cycle_one.y)
 
-    swaying_graph(cycle_one.swaying_detector.midpoints_x, cycle_one.swaying_detector.default_midpoint_x,cycle_one.swaying_detector.sway_threshold)
+    cluster_graph(cycle_one.beat_coordinates)
+
+    overtime_graph(cycle_one.x, cycle_one.y)
+
+    swaying_graph(cycle_one.swaying_detector.midpoints_x, cycle_one.swaying_detector.midpoint_all_history, cycle_one.swaying_detector.sway_threshold)
     
     mirror_x_coordinate_graph(cycle_one.mirror_detector.left_hand_x, cycle_one.mirror_detector.right_hand_x)
         
@@ -83,20 +87,64 @@ def hand_path_graph(x_proc, y_proc):
     plt.savefig(video_conduct_path_name() + '.png', bbox_inches='tight')
     plt.show()
 
+# generates the plot for showing the clusters of the beats
+def cluster_graph(beat_coordinates):  # Updated to accept beat_coordinates
+
+    # plt.xlim(0, 1)
+    # plt.ylim(0, 1)
+    plt.xlabel("X-Coords")
+    plt.ylabel("Y-Coords")
+
+    # Plot the beats on the graph
+    if beat_coordinates:  # Check if there are any beat coordinates
+        x_beats, y_beats = zip(*beat_coordinates)  # Unzip the beat coordinates
+        plt.scatter(x_beats, [-y for y in y_beats], color='red', label='Beats')  # Inverted Y coordinates
+
+    plt.xlabel("X-Coords")
+    plt.ylabel("Y-Coords")
+    plt.title("Hand Cluster Plot")
+    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.legend()  # Add legend to show beats
+    # plt.savefig(video_conduct_path_name() + '.png', bbox_inches='tight')
+    plt.show()
+
+# generates the plot for the x and y over the whole video
+def overtime_graph(x, y):
+
+    plt.figure(figsize=(12, 6))  # Add figure size for better visibility
+    plt.plot(x, label="X-Coords", color='b', alpha=0.7)  # Plot X coordinates
+    plt.plot(range(len(y)), [-value for value in y], label="Y-Coords", color='g', alpha=0.7)  # Inverted Y coordinates
+
+    plt.xlabel("Frame Number")
+    plt.ylabel("Coordinate Value")
+    plt.title("Overtime Graph")
+    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.legend()  # Add legend to show beats
+    plt.show()
+
+
 # generates plot showing swaying detection data
 def swaying_graph(mid, default_mid, threshold):
+
     if not mid:
         return
         
     plt.figure(figsize=(12, 6))
     
-    # plot midpoint and threshold lines
+    # Plot all midpoints
     plt.plot(range(len(mid)), mid, label='Current Midpoint X', color='b', alpha=0.7)
-    plt.axhline(y=default_mid, color='k', linestyle='-', label='Default Midpoint X')
-    plt.axhline(y=default_mid + threshold, color='r', linestyle='--', label='Upper Threshold X')
-    plt.axhline(y=default_mid - threshold, color='r', linestyle='--', label='Lower Threshold X')
     
-    # set plot attributes and save
+    # Plot the default midpoints
+    plt.plot(range(len(default_mid)), default_mid, label='Default Midpoint X', color='r', alpha=0.7)
+    
+    # Plot threshold lines based on default_mid values
+    upper_threshold = [value + threshold for value in default_mid]  # Calculate upper threshold
+    lower_threshold = [value - threshold for value in default_mid]  # Calculate lower threshold
+    
+    plt.plot(range(len(default_mid)), upper_threshold, color='r', linestyle='--', label='Upper Threshold X')  # Updated line
+    plt.plot(range(len(default_mid)), lower_threshold, color='r', linestyle='--', label='Lower Threshold X')  # Updated line
+    
+    # Set plot attributes and save
     plt.title('Swaying Detection Over Frame Number')
     plt.xlabel('Frame Number')
     plt.ylabel('Midpoint X Value')
