@@ -11,7 +11,7 @@ def generate_all_graphs(cycle_one):
 
     overtime_graph(cycle_one.x, cycle_one.y)
 
-    swaying_graph(cycle_one.swaying_detector.midpoints_x, cycle_one.swaying_detector.midpoint_all_history, cycle_one.swaying_detector.sway_threshold)
+    swaying_graph(cycle_one.swaying_detector.midpoints_x, cycle_one.swaying_detector.default_midpoint_history, cycle_one.swaying_detector.sway_threshold)
     
     mirror_x_coordinate_graph(cycle_one.mirror_detector.left_hand_x, cycle_one.mirror_detector.right_hand_x)
         

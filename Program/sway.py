@@ -4,28 +4,28 @@ class swayingDetection:
     def __init__(self):
         self.default_midpoint_x = 0
         self.sway_threshold = 0.025  # Threshold for swaying detection
-        self.midpoints_x = []
+        self.midpoints_x = []  # Current midpoints
         self.midpointflag = False
 
-        # Dynamic updating of swaying midpoint
-        self.midpoint_all_history = []
-        self.midpoint_recent_history = []
-        self.history_size = 25
+        # For storing default midpoint history
+        self.default_midpoint_history = []  # Track default midpoint changes
+        self.frame_counter = 0  # Add frame counter
+        self.update_interval = 100  # Update every 100 frames
 
     def midpoint_calculation(self, x12, x11):
+        # Calculate and store current midpoint
         self.midpoint_x = abs(x12 - x11) * 0.5 + x12
         self.midpoints_x.append(self.midpoint_x)
-
-        self.midpoint_recent_history.append(self.midpoint_x)
-
-        # If the length of the list is longer than history size (3) then pop the oldest digit
-        if len(self.midpoint_recent_history) > self.history_size:
-            self.midpoint_recent_history.pop(0)
-
-        self.midpoint_all_history.append(mean(self.midpoint_recent_history))
-
-        # Update default_midpoint_x dynamically
-        self.default_midpoint_x = mean(self.midpoint_recent_history)  # Update directly
+        
+        # Update frame counter and check if we should update default_midpoint_x
+        if self.midpointflag:  # Only update if processing is active
+            self.frame_counter += 1
+            if self.frame_counter >= self.update_interval:
+                self.default_midpoint_x = self.midpoint_x  # Update default to current
+                self.frame_counter = 0  # Reset counter
+            
+        # Store current default midpoint for graphing
+        self.default_midpoint_history.append(self.default_midpoint_x)
 
     def set_midpoint(self):
         # This method can be called to explicitly set the midpoint when processing starts

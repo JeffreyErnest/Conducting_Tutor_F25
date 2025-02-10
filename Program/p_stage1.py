@@ -53,6 +53,7 @@ def handle_user_input(key, frame_number, processing_active, current_start_frame,
         if not processing_active:
             current_start_frame = frame_number
             swaying_detector.set_midpoint_flag_true()
+            swaying_detector.set_midpoint()  # Set the initial midpoint when processing starts
             print(f"Started processing at frame: {frame_number}")
             return True, current_start_frame
     
