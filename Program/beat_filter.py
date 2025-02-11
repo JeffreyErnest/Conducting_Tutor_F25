@@ -27,41 +27,30 @@ def filter_beats(frame_array, processed_frame_array):
     y = np.array(y).flatten()
 
     # find peaks and valleys in raw coordinates
-    x_peaks, _ = find_peaks(x)
-    x_valleys, _ = find_peaks(-x)  # negate x for valleys
-    y_peaks, _ = find_peaks(y)
-    y_valleys, _ = find_peaks(-y)  # negate y for valleys
+    y_peaks, _ = find_peaks(y, prominence=0.005, distance = 5)
+    y_valleys, _ = find_peaks(-y, prominence=0.005, distance = 5)
 
     # process filtered coordinates
-    x_proc = np.array([coord[0] for coord in processed_frame_array]).flatten()
     y_proc = np.array([coord[1] for coord in processed_frame_array]).flatten()
 
     # find peaks and valleys in processed coordinates
-    x_peaks_proc, _ = find_peaks(x_proc)
-    x_valleys_proc, _ = find_peaks(-x_proc)
     y_peaks_proc, _ = find_peaks(y_proc)
     y_valleys_proc, _ = find_peaks(-y_proc)
 
     # convert peak/valley indices to lists
-    x_peaks_proc = list(x_peaks_proc)
-    x_valleys_proc = list(x_valleys_proc)
     y_peaks_proc = list(y_peaks_proc)
     y_valleys_proc = list(y_valleys_proc)
 
     # combine all detected beats and filter by threshold
-    threshold = 10  # minimum frames between beats can be adjusted, but 5 works well
-    significant_beats = sorted(set(x_peaks_proc + x_valleys_proc + y_peaks_proc + y_valleys_proc))
-    filtered_significant_beats = filter_significant_points(significant_beats, threshold)
+    filtered_significant_beats =  list(y_peaks) + list(y_valleys)
 
     # Get the x,y coordinates for each beat
     beat_coordinates = [(x[i], y[i]) for i in filtered_significant_beats]
 
     # Before return, add debug info
-    print(f"Number of x peaks: {len(x_peaks)}")
-    print(f"Number of x valleys: {len(x_valleys)}")
     print(f"Number of y peaks: {len(y_peaks)}")
     print(f"Number of y valleys: {len(y_valleys)}")
     print(f"Number of filtered beats: {len(filtered_significant_beats)}")
     print("==================================\n")
 
-    return filtered_significant_beats, beat_coordinates, x_peaks, x_valleys, y_peaks, y_valleys, x, y
+    return filtered_significant_beats, beat_coordinates, y_peaks, y_valleys, y
