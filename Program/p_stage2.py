@@ -1,4 +1,5 @@
 from imports import *
+from interface import display_frame, get_screen, get_window_size
 
 # processes a single frame and returns the annotated image
 def process_frame(cap, detector, image):
@@ -49,19 +50,27 @@ def calculate_bpm(current_frame, beats, fps, window_duration):
 
 # displays beat indicator and records bpm data
 def print_beats(frame_index, annotated_image_bgr, filtered_significant_beats, beats, fps, bpm_window, text_display_counter):
-   
+    window_size = get_window_size()
+    screen = get_screen()
+
     # setup text display parameters
-    font = cv2.FONT_HERSHEY_SIMPLEX
+    font = pygame.font.Font(None, 50)
+    #font = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = 2
     font_thickness = 2
     font_color = (255, 255, 255)
-    text = "Beat!"
-    text_size = cv2.getTextSize(text, font, font_scale, font_thickness)[0]
-    text_x = (annotated_image_bgr.shape[1] - text_size[0]) // 2
-    text_y = (annotated_image_bgr.shape[0] + text_size[1]) // 2
+    text = font.render("Beat!", True, (255, 255, 255))
+    #text = "Beat!"
+    #text_size = cv2.getTextSize(text, font, font_scale, font_thickness)[0]
+    text_x = (window_size[0] - text.get_width()) // 2
+    text_y = (window_size[1] - text.get_height()) // 2
+    #text_x = (annotated_image_bgr.shape[1] - text_size[0]) // 2
+    #text_y = (annotated_image_bgr.shape[0] + text_size[1]) // 2
 
     if frame_index in filtered_significant_beats:
-        cv2.putText(annotated_image_bgr, text, (text_x, text_y), font, font_scale, font_color, font_thickness)
+        screen.blit(text, (text_x, text_y))
+        #pygame.display.update()
+        #cv2.putText(annotated_image_bgr, text, (text_x, text_y), font, font_scale, font_color, font_thickness)
 
         beats.append(frame_index)
         bpm = calculate_bpm(frame_index, beats, fps, bpm_window)
@@ -73,9 +82,12 @@ def print_beats(frame_index, annotated_image_bgr, filtered_significant_beats, be
         with open(output_file, 'a') as file:
             file.write(bpm_info)
 
+        # Duration of text display
         text_display_counter = 3
     elif text_display_counter > 0:
-        cv2.putText(annotated_image_bgr, text, (text_x, text_y), font, font_scale, font_color, font_thickness)
+        screen.blit(text, (text_x, text_y))
+        #pygame.display.update()
+        #cv2.putText(annotated_image_bgr, text, (text_x, text_y), font, font_scale, font_color, font_thickness)
         text_display_counter -= 1
 
     return text_display_counter
@@ -95,6 +107,8 @@ def output_process_video(cap, out, detector, filtered_significant_beats, process
     print("================================\n")
 
     # initialize parameters
+    font = pygame.font.Font(None, 50)
+    screen = get_screen()
     bpm_window = 5
     beats = []
     text_display_counter = 0
@@ -106,6 +120,7 @@ def output_process_video(cap, out, detector, filtered_significant_beats, process
             break
 
         annotated_image_bgr = process_frame(cap, detector, image)
+        display_frame(annotated_image_bgr)
         
         # add check for None
         if annotated_image_bgr is None:
@@ -115,10 +130,15 @@ def output_process_video(cap, out, detector, filtered_significant_beats, process
             text_display_counter = print_beats(frame_index, annotated_image_bgr, filtered_significant_beats, beats, fps, bpm_window, text_display_counter)
 
         swaying_detector.swaying_print(frame_index, annotated_image_bgr)
-
+        
+        frame_text = font.render(f"Frame: {frame_index}", True, (255, 255, 255))
+        screen.blit(frame_text, (10, 10))
+        pygame.display.update()
+        pygame.event.pump()
+        pygame.time.delay(10)
         # display frame number and update display
-        cv2.putText(annotated_image_bgr, f'Frame: {frame_index}', (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
-        cv2.imshow('Annotated Frames', annotated_image_bgr)
+        # cv2.putText(annotated_image_bgr, f'Frame: {frame_index}', (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
+        # cv2.imshow('Annotated Frames', annotated_image_bgr)
         out.write(annotated_image_bgr)
 
         key = cv2.waitKey(5) & 0xFF
@@ -130,6 +150,7 @@ def output_process_video(cap, out, detector, filtered_significant_beats, process
     # cleanup
     cap.release()
     out.release()
+    pygame.quit()
     cv2.destroyAllWindows()
 
     return

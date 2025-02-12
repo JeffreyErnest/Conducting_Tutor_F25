@@ -1,4 +1,5 @@
 from imports import *
+from interface import display_frame, get_screen, get_window_size
 
 # processes a single frame and returns the annotated image and detection results
 def process_frame(cap, detector, image):
@@ -47,33 +48,50 @@ def process_landmarks(detection_result, frame_array, processed_frame_array, proc
 
 # handles keyboard input for starting/stopping processing and exiting
 def handle_user_input(key, frame_number, processing_active, current_start_frame, swaying_detector, processing_intervals):
-    # start processing on 's' key
-    if key == ord('s'):
-        if not processing_active:
-            current_start_frame = frame_number
-            swaying_detector.set_midpoint_flag_true()
-            print(f"Started processing at frame: {frame_number}")
-            return True, current_start_frame
-    
-    # end processing on 'e' key
-    elif key == ord('e'):
-        if processing_active:
-            processing_intervals.append((current_start_frame, frame_number))
-            swaying_detector.set_midpoint_flag_false()
-            print(f"Ended processing at frame: {frame_number}")
-            return False, None
-    
-    # exit on ESC key
-    elif key == 27:
-        if processing_active:
-            processing_intervals.append((current_start_frame, frame_number))
-            print(f"Ended processing at frame: {frame_number}")
-        return None, None
+    # Handle PyGame events
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            if processing_active:
+                processing_intervals.append((current_start_frame, frame_number))
+                print(f"Ended processing at frame: {frame_number}")
+            pygame.quit()
+            exit()
+
+            # start processing on 's' key
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_s:
+            #if key == ord('s'):
+                if not processing_active:
+                    current_start_frame = frame_number
+                    swaying_detector.set_midpoint_flag_true()
+                    print(f"Started processing at frame: {frame_number}")
+                    return True, current_start_frame
+                
+            # end processing on 'e' key
+            elif event.key == pygame.K_e:  # End processing
+            # elif key == ord('e'):
+                if processing_active:
+                    processing_intervals.append((current_start_frame, frame_number))
+                    swaying_detector.set_midpoint_flag_false()
+                    print(f"Ended processing at frame: {frame_number}")
+                    return False, None
+            
+                # exit on ESC key
+            elif key == 27:
+                if processing_active:
+                    processing_intervals.append((current_start_frame, frame_number))
+                    print(f"Ended processing at frame: {frame_number}")
+                pygame.quit()
+                exit()
 
     return processing_active, current_start_frame
 
 # main video processing loop
 def process_video(cap, out, detector, frame_array, processed_frame_array, processing_intervals, swaying_detector, mirror_detector):
+    window_size = get_window_size()
+    screen = get_screen()
+    clock = pygame.time.Clock()
+
     print("\n=== Video Processing Debug Information ===")
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     fps = int(cap.get(cv2.CAP_PROP_FPS))
@@ -86,6 +104,7 @@ def process_video(cap, out, detector, frame_array, processed_frame_array, proces
     frames_read = 0
     processing_active = False
     current_start_frame = None
+    font = pygame.font.Font(None, 50)
 
     while cap.isOpened():
         success, image = cap.read()
@@ -104,16 +123,23 @@ def process_video(cap, out, detector, frame_array, processed_frame_array, proces
 
         # process current frame
         annotated_image_bgr, detection_result = process_frame(cap, detector, image)
+        frame_text = font.render(f"Frame: {frame_number}", True, (255, 255, 255))
+
 
         if annotated_image_bgr is not None:
             # display and process frame
-            cv2.imshow('Video Feed - Selection Mode', annotated_image_bgr)
+
+            # Resize to match Pygame window
+            annotated_image_bgr = cv2.resize(annotated_image_bgr, window_size)
+            # add frame number and save frame
+            display_frame(annotated_image_bgr)
+            screen.blit(frame_text, (10, 10))
+            pygame.display.update()
+
+            #cv2.imshow('Video Feed - Selection Mode', annotated_image_bgr)
             process_landmarks(detection_result, frame_array, processed_frame_array, 
                            processing_active, swaying_detector, mirror_detector)
-
-            # add frame number and save frame
-            cv2.putText(annotated_image_bgr, f'Frame: {frame_number}', (10, 50), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
+            #cv2.putText(annotated_image_bgr, f'Frame: {frame_number}', (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
             out.write(annotated_image_bgr)
 
         # handle user input
@@ -127,6 +153,8 @@ def process_video(cap, out, detector, frame_array, processed_frame_array, proces
             break
 
         frame_number += 1
+        # Maintain 30 FPS
+        # clock.tick(30)
 
     # cleanup resources
     cap.release()

@@ -5,6 +5,11 @@ from matplotlib import pyplot as plt
 from matplotlib.collections import LineCollection
 from matplotlib.colors import LinearSegmentedColormap
 from scipy.signal import find_peaks
+import time
+import sys
+
+#PyGame
+import pygame
 
 # Mediapipe imports
 import mediapipe as mp
@@ -20,3 +25,4 @@ from beat_filter import filter_beats
 from sway import swayingDetection
 from mirror import mirrorDetection
 from graphs import generate_all_graphs
+from interface import display_frame, get_screen, get_window_size
