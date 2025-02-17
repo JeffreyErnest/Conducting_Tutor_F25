@@ -7,9 +7,9 @@ from matplotlib.colors import LinearSegmentedColormap
 from scipy.signal import find_peaks
 import time
 import sys
-
 #PyGame
 import pygame
+from numpy import mean
 
 # Mediapipe imports
 import mediapipe as mp
