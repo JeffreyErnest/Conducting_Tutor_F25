@@ -3,7 +3,7 @@ from imports import *
 # generates all analysis graphs from the collected data
 def generate_all_graphs(cycle_one):
 
-    beat_plot_graph(cycle_one.processing_intervals, cycle_one.filtered_significant_beats, cycle_one.x_peaks, cycle_one.x_valleys, cycle_one.y_peaks, cycle_one.y_valleys, cycle_one.x, cycle_one.y)
+    beat_plot_graph(cycle_one.processing_intervals, cycle_one.filtered_significant_beats, cycle_one.y_peaks, cycle_one.y_valleys, cycle_one.y)    
     
     hand_path_graph(cycle_one.x, cycle_one.y)
 
@@ -19,11 +19,10 @@ def generate_all_graphs(cycle_one):
 
 
 # generates plot showing beat detection and coordinate data
-def beat_plot_graph(intervals, beats, x_peaks, x_valleys, y_peaks, y_valleys, x, y):
+def beat_plot_graph(intervals, beats, y_peaks, y_valleys, y):
     plt.figure(figsize=(12, 6))
     
     # plot coordinate data
-    plt.plot(range(len(x)), x, label='X Coordinates', color='b', alpha=0.7)
     plt.plot(range(len(y)), y, label='Y Coordinates', color='g', alpha=0.7)
 
     # highlight processing intervals
@@ -37,8 +36,6 @@ def beat_plot_graph(intervals, beats, x_peaks, x_valleys, y_peaks, y_valleys, x,
     for beat in all_beats:
         plt.axvline(x=beat, color='purple', linestyle='--', 
                    label="Beats" if beat == all_beats[0] else None)
-    plt.plot(x_peaks, [x[i] for i in x_peaks], "o", label="X Peaks")
-    plt.plot(x_valleys, [x[i] for i in x_valleys], "o", label="X Valleys")
     plt.plot(y_peaks, [y[i] for i in y_peaks], "o", label="Y Peaks")
     plt.plot(y_valleys, [y[i] for i in y_valleys], "o", label="Y Valleys")
     
