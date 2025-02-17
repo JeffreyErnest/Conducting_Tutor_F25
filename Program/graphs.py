@@ -7,7 +7,11 @@ def generate_all_graphs(cycle_one):
     
     hand_path_graph(cycle_one.x, cycle_one.y)
 
-    swaying_graph(cycle_one.swaying_detector.midpoints_x, cycle_one.swaying_detector.default_midpoint_x,cycle_one.swaying_detector.sway_threshold)
+    cluster_graph(cycle_one.beat_coordinates)
+
+    overtime_graph(cycle_one.y)
+
+    swaying_graph(cycle_one.swaying_detector.midpoints_x, cycle_one.swaying_detector.default_midpoint_history, cycle_one.swaying_detector.sway_threshold)
     
     mirror_x_coordinate_graph(cycle_one.mirror_detector.left_hand_x, cycle_one.mirror_detector.right_hand_x)
         
@@ -80,20 +84,115 @@ def hand_path_graph(x_proc, y_proc):
     plt.savefig(video_conduct_path_name() + '.png', bbox_inches='tight')
     plt.show()
 
+# generates the plot for showing the clusters of the beats
+def cluster_graph(beat_coordinates):  
+    plt.xlabel("X-Coords")
+    plt.ylabel("Y-Coords")
+
+    # Define colors for the beats
+    colors = ['red', 'blue', 'green', 'orange']  # List of colors for beats
+
+    # Plot the beats on the graph
+    if beat_coordinates:  # Check if there are any beat coordinates
+        x_beats, y_beats = zip(*beat_coordinates)  # Unzip the beat coordinates
+        
+        # Plot each beat with a color based on its index
+        for i in range(len(x_beats)):
+            # Calculate the color index based on the total number of colors
+            color_index = i % len(colors)  # Cycle through colors
+            plt.scatter(x_beats[i], y_beats[i], color=colors[color_index])  # Use the color for the current beat
+
+    plt.xlabel("X-Coords")
+    plt.ylabel("Y-Coords")
+    plt.title("Hand Cluster Plot")
+    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.savefig(video_cluster_plot_name() + '.png', bbox_inches='tight')  # Save with appropriate name
+    plt.show()
+
+# generates the plot for the y over the whole video
+def overtime_graph(y):
+    plt.figure(figsize=(12, 6))
+
+    # Plot inverted Y coordinates for visual consistency
+    plt.plot(range(len(y)), [-value for value in y], label="Y-Coords", color='g', alpha=0.7)
+
+    # Normalize the data
+    y_min, y_max = min(y), max(y)
+    y_normalized = [(val - y_min) / (y_max - y_min) for val in y]
+
+    # Set dynamic parameters for peak detection
+    prominence = (max(y_normalized) - min(y_normalized)) * 0.1
+    distance = 5
+
+    # Detect peaks and valleys
+    y_peaks, _ = find_peaks(-np.array(y_normalized), prominence=prominence, distance=distance)
+    y_valleys, _ = find_peaks(y_normalized, prominence=prominence, distance=distance)
+
+    # Mark peaks and valleys on the plot
+    for valley in y_valleys:
+        plt.plot(valley, -y_normalized[valley], 'o', color='purple', label="Downbeat" if valley == y_valleys[0] else None)
+        plt.text(valley, -y_normalized[valley], 'Downbeat', color='purple', fontsize=8, ha='right')
+    for peak in y_peaks:
+        plt.plot(peak, -y_normalized[peak], 'o', color='blue', label="Peak" if peak == y_peaks[0] else None)
+        plt.text(peak, -y_normalized[peak], 'Peak', color='blue', fontsize=8, ha='right')
+
+    # Estimate time signature from peaks
+    peak_heights = [-y_normalized[i] for i in y_peaks]
+    
+    if peak_heights:
+        large_wave_threshold = np.percentile(peak_heights, 75)
+        large_wave_indices = [i for i in y_peaks if -y_normalized[i] > large_wave_threshold]
+        small_wave_counts = []
+
+        for i in range(1, len(large_wave_indices)):
+            small_wave_count = sum(1 for j in y_peaks if large_wave_indices[i-1] < j < large_wave_indices[i] and -y_normalized[j] <= large_wave_threshold)
+            small_wave_counts.append(small_wave_count)
+
+            time_signature = small_wave_count + 1
+            print(f"Estimated Time Signature at frame {large_wave_indices[i]}: {time_signature}/4")
+
+    else:
+        print("No significant peaks detected to determine time signature.")
+
+    # Print detected peaks for debugging
+    print("Detected Peaks and Heights:")
+    for i in y_peaks:
+        print(f"Frame {i}: Height {y[i]}")
+
+    # Finalize and show the plot
+    plt.xlabel("Frame Number")
+    plt.ylabel("Coordinate Value")
+    plt.title("Overtime Graph")
+    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.legend()
+
+    # Save the plot
+    plt.savefig(video_overtime_plot_name() + '.png', bbox_inches='tight')
+    plt.show()
+
+
 # generates plot showing swaying detection data
 def swaying_graph(mid, default_mid, threshold):
+
     if not mid:
         return
         
     plt.figure(figsize=(12, 6))
     
-    # plot midpoint and threshold lines
+    # Plot all midpoints
     plt.plot(range(len(mid)), mid, label='Current Midpoint X', color='b', alpha=0.7)
-    plt.axhline(y=default_mid, color='k', linestyle='-', label='Default Midpoint X')
-    plt.axhline(y=default_mid + threshold, color='r', linestyle='--', label='Upper Threshold X')
-    plt.axhline(y=default_mid - threshold, color='r', linestyle='--', label='Lower Threshold X')
     
-    # set plot attributes and save
+    # Plot the default midpoints
+    plt.plot(range(len(default_mid)), default_mid, label='Default Midpoint X', color='r', alpha=0.7)
+    
+    # Plot threshold lines based on default_mid values
+    upper_threshold = [value + threshold for value in default_mid]  # Calculate upper threshold
+    lower_threshold = [value - threshold for value in default_mid]  # Calculate lower threshold
+    
+    plt.plot(range(len(default_mid)), upper_threshold, color='r', linestyle='--', label='Upper Threshold X')  # Updated line
+    plt.plot(range(len(default_mid)), lower_threshold, color='r', linestyle='--', label='Lower Threshold X')  # Updated line
+    
+    # Set plot attributes and save
     plt.title('Swaying Detection Over Frame Number')
     plt.xlabel('Frame Number')
     plt.ylabel('Midpoint X Value')
