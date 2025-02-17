@@ -18,9 +18,9 @@ def filter_beats(frame_array, processed_frame_array):
     print(f"Input frame array length: {len(frame_array)}")
     print(f"Processed frame array length: {len(processed_frame_array)}")
 
-    # extract x and y coordinates from frame arrays
-    x = [coord[0] for coord in frame_array]
-    y = [coord[1] for coord in frame_array]
+    # extract y and x coordinates from frame arrays (if flipped)
+    y = [coord[0] for coord in frame_array]  # Assuming y is first
+    x = [coord[1] for coord in frame_array]  # Assuming x is second
     
     # convert to numpy arrays for processing
     x = np.array(x).flatten()

@@ -2,7 +2,7 @@ from imports import *
 
 # returns the name of the video file being processed
 def initialize_video():
-    videoFileName = 'videos/Marchingband(2).mp4'
+    videoFileName = 'C:/Users/Jeffrey Ernest/Desktop/Research/videos/Marchingband(2).mp4'
     return videoFileName
 
 # returns name for the final output video
@@ -52,5 +52,17 @@ def video_bpm_output_name():
     videoFileName = initialize_video()
     bpmOutputName = videoFileName + '_auto_BPM.txt'
     return bpmOutputName
+
+# returns name for the cluster plot
+def video_cluster_plot_name():
+    videoFileName = initialize_video()
+    clusterPlotName = videoFileName + '_Full_Cluster_plot'
+    return clusterPlotName
+
+# returns name for the overtime plot
+def video_overtime_plot_name():
+    videoFileName = initialize_video()
+    overtimePlotName = videoFileName + '_Full_Overtime_plot'
+    return overtimePlotName
 
         

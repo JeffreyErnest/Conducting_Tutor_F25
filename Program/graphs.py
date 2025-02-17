@@ -85,24 +85,28 @@ def hand_path_graph(x_proc, y_proc):
     plt.show()
 
 # generates the plot for showing the clusters of the beats
-def cluster_graph(beat_coordinates):  # Updated to accept beat_coordinates
-
-    # plt.xlim(0, 1)
-    # plt.ylim(0, 1)
+def cluster_graph(beat_coordinates):  
     plt.xlabel("X-Coords")
     plt.ylabel("Y-Coords")
+
+    # Define colors for the beats
+    colors = ['red', 'blue', 'green', 'orange']  # List of colors for beats
 
     # Plot the beats on the graph
     if beat_coordinates:  # Check if there are any beat coordinates
         x_beats, y_beats = zip(*beat_coordinates)  # Unzip the beat coordinates
-        plt.scatter(x_beats, [-y for y in y_beats], color='red', label='Beats')  # Inverted Y coordinates
+        
+        # Plot each beat with a color based on its index
+        for i in range(len(x_beats)):
+            # Calculate the color index based on the total number of colors
+            color_index = i % len(colors)  # Cycle through colors
+            plt.scatter(x_beats[i], y_beats[i], color=colors[color_index])  # Use the color for the current beat
 
     plt.xlabel("X-Coords")
     plt.ylabel("Y-Coords")
     plt.title("Hand Cluster Plot")
     plt.grid(True, linestyle='--', alpha=0.7)
-    plt.legend()  # Add legend to show beats
-    # plt.savefig(video_conduct_path_name() + '.png', bbox_inches='tight')
+    plt.savefig(video_cluster_plot_name() + '.png', bbox_inches='tight')  # Save with appropriate name
     plt.show()
 
 # generates the plot for the y over the whole video
@@ -136,7 +140,7 @@ def overtime_graph(y):
     peak_heights = [-y_normalized[i] for i in y_peaks]
     
     if peak_heights:
-        large_wave_threshold = np.percentile(peak_heights, 80)
+        large_wave_threshold = np.percentile(peak_heights, 75)
         large_wave_indices = [i for i in y_peaks if -y_normalized[i] > large_wave_threshold]
         small_wave_counts = []
 
@@ -161,6 +165,9 @@ def overtime_graph(y):
     plt.title("Overtime Graph")
     plt.grid(True, linestyle='--', alpha=0.7)
     plt.legend()
+
+    # Save the plot
+    plt.savefig(video_overtime_plot_name() + '.png', bbox_inches='tight')
     plt.show()
 
 
