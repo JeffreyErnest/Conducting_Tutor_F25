@@ -62,22 +62,22 @@ def handle_user_input(key, frame_number, processing_active, current_start_frame,
             # start processing on 's' key
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_s:
-            #if key == ord('s'):
-                if not processing_active:
-                    current_start_frame = frame_number
-                    swaying_detector.set_midpoint_flag_true()
-                    swaying_detector.set_midpoint()  # Set the initial midpoint when processing starts
-                    print(f"Started processing at frame: {frame_number}")
-                    return True, current_start_frame
+                #if key == ord('s'):
+                    if not processing_active:
+                        current_start_frame = frame_number
+                        swaying_detector.set_midpoint_flag_true()
+                        swaying_detector.set_midpoint()  # Set the initial midpoint when processing starts
+                        print(f"Started processing at frame: {frame_number}")
+                        return True, current_start_frame
                 
             # end processing on 'e' key
             elif event.key == pygame.K_e:  # End processing
-            # elif key == ord('e'):
-                if processing_active:
-                    processing_intervals.append((current_start_frame, frame_number))
-                    swaying_detector.set_midpoint_flag_false()
-                    print(f"Ended processing at frame: {frame_number}")
-                    return False, None
+                #if key == ord('e'):
+                    if processing_active:
+                        processing_intervals.append((current_start_frame, frame_number))
+                        swaying_detector.set_midpoint_flag_false()
+                        print(f"Ended processing at frame: {frame_number}")
+                        return False, None
             
                 # exit on ESC key
             elif key == 27:

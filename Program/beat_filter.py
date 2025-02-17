@@ -18,16 +18,15 @@ def filter_beats(frame_array, processed_frame_array):
     print(f"Input frame array length: {len(frame_array)}")
     print(f"Processed frame array length: {len(processed_frame_array)}")
 
-    # extract y and x coordinates from frame arrays (if flipped)
-    y = [coord[0] for coord in frame_array]  # Assuming y is first
-    x = [coord[1] for coord in frame_array]  # Assuming x is second
+    # extract x and y coordinates from frame arrays
+    x = [coord[0] for coord in frame_array]
+    y = [coord[1] for coord in frame_array]
     
     # convert to numpy arrays for processing
     x = np.array(x).flatten()
     y = np.array(y).flatten()
 
     # find peaks and valleys in raw coordinates
-
     y_peaks, _ = find_peaks(y, prominence=0.005, distance = 5)
     y_valleys, _ = find_peaks(-y, prominence=0.005, distance = 5)
 
@@ -43,6 +42,7 @@ def filter_beats(frame_array, processed_frame_array):
     y_peaks_proc = list(y_peaks_proc)
     y_valleys_proc = list(y_valleys_proc)
 
+    # combine all detected beats and filter by threshold
     filtered_significant_beats = list(y_peaks)
     # Get the x,y coordinates for each beat
     beat_coordinates = [(x[i], y[i]) for i in filtered_significant_beats]

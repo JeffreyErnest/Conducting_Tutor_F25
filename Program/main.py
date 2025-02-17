@@ -46,7 +46,7 @@ class cycleOne:
         process_video(self.cap, self.out, self.detector, self.frame_array, self.processed_frame_array, self.processing_intervals, self.swaying_detector, self.mirror_detector)
         
         # analyze detected movements for beats
-        (self.filtered_significant_beats, self.beat_coordinates, self.y_peaks, self.y_valleys, self.x, self.y) = filter_beats(self.frame_array, self.processed_frame_array)
+        (self.filtered_significant_beats, self.beat_coordinates, self.y_peaks, self.y_valleys, self.y, self.x) = filter_beats(self.frame_array, self.processed_frame_array)
 
         # After beat detection, add more debug info
         print("\n=== Beat Detection Results ===")
@@ -81,7 +81,7 @@ class cycleTwo:
         # process video with detected beats
         output_process_video(self.cap, self.out, self.detector, cycle_one_instance.filtered_significant_beats, cycle_one_instance.processing_intervals, self.swaying_detector)
         
-        # Detect patterns and write to file
+        # Detect patterns and write to files
         patterns = self.pattern_detector.pattern_detection(cycle_one_instance.beat_coordinates)
         with open(self.videoFileName + "_video_pattern.txt", "w") as f:
             for pattern in patterns:
