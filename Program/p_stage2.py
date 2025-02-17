@@ -70,7 +70,7 @@ def print_beats(frame_index, annotated_image_bgr, filtered_significant_beats, be
     if frame_index in filtered_significant_beats:
         screen.blit(text, (text_x, text_y))
         #pygame.display.update()
-        #cv2.putText(annotated_image_bgr, text, (text_x, text_y), font, font_scale, font_color, font_thickness)
+        cv2.putText(annotated_image_bgr, text, (text_x, text_y), font, font_scale, font_color, font_thickness)
 
         beats.append(frame_index)
         bpm = calculate_bpm(frame_index, beats, fps, bpm_window)
@@ -87,7 +87,7 @@ def print_beats(frame_index, annotated_image_bgr, filtered_significant_beats, be
     elif text_display_counter > 0:
         screen.blit(text, (text_x, text_y))
         #pygame.display.update()
-        #cv2.putText(annotated_image_bgr, text, (text_x, text_y), font, font_scale, font_color, font_thickness)
+        cv2.putText(annotated_image_bgr, text, (text_x, text_y), font, font_scale, font_color, font_thickness)
         text_display_counter -= 1
 
     return text_display_counter
@@ -137,7 +137,7 @@ def output_process_video(cap, out, detector, filtered_significant_beats, process
         pygame.event.pump()
         pygame.time.delay(10)
         # display frame number and update display
-        # cv2.putText(annotated_image_bgr, f'Frame: {frame_index}', (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
+        cv2.putText(annotated_image_bgr, f'Frame: {frame_index}', (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
         # cv2.imshow('Annotated Frames', annotated_image_bgr)
         out.write(annotated_image_bgr)
 

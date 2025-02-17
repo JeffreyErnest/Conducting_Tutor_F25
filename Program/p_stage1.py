@@ -139,7 +139,7 @@ def process_video(cap, out, detector, frame_array, processed_frame_array, proces
             #cv2.imshow('Video Feed - Selection Mode', annotated_image_bgr)
             process_landmarks(detection_result, frame_array, processed_frame_array, 
                            processing_active, swaying_detector, mirror_detector)
-            #cv2.putText(annotated_image_bgr, f'Frame: {frame_number}', (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
+            cv2.putText(annotated_image_bgr, f'Frame: {frame_number}', (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
             out.write(annotated_image_bgr)
 
         # handle user input
