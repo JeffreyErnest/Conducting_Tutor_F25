@@ -27,11 +27,11 @@ def process_landmarks(detection_result, frame_array, processed_frame_array, proc
         for landmarks in pose_landmarks_list:
             if len(landmarks) > 16:
                 # get right hand coordinates
-                x16 = landmarks[16].x
-                y16 = landmarks[16].y
+                x16 = landmarks[16].x  # X coordinate
+                y16 = landmarks[16].y  # Y coordinate
                 
                 # store coordinates
-                frame_array.append((x16, y16))
+                frame_array.append((x16, y16)) 
                 if processing_active:
                     processed_frame_array.append((x16, y16))
                 else:

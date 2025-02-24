@@ -46,7 +46,7 @@ class cycleOne:
         process_video(self.cap, self.out, self.detector, self.frame_array, self.processed_frame_array, self.processing_intervals, self.swaying_detector, self.mirror_detector)
         
         # analyze detected movements for beats
-        (self.filtered_significant_beats, self.beat_coordinates, self.y_peaks, self.y_valleys, self.x, self.y) = filter_beats(self.frame_array, self.processed_frame_array)
+        (self.filtered_significant_beats, self.beat_coordinates, self.y_peaks, self.y_valleys, self.y, self.x) = filter_beats(self.frame_array, self.processed_frame_array)
 
         # After beat detection, add more debug info
         print("\n=== Beat Detection Results ===")
@@ -77,7 +77,7 @@ class cycleTwo:
         self.frame_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.fps = int(self.cap.get(cv2.CAP_PROP_FPS))    
         self.out = cv2.VideoWriter(video_out_name() + '.mp4', cv2.VideoWriter_fourcc(*'mp4v'), self.fps, (self.frame_width, self.frame_height))
-                
+
         # process video with detected beats
         output_process_video(self.cap, self.out, self.detector, cycle_one_instance.filtered_significant_beats, cycle_one_instance.processing_intervals, self.swaying_detector)
         

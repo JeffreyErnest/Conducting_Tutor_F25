@@ -2,7 +2,7 @@ from imports import *
 
 # returns the name of the video file being processed
 def initialize_video():
-    videoFileName = 'C:/Users/Jeffrey Ernest/Desktop/Research/videos/4-4stacatto(3).mp4'
+    videoFileName = "C:/Users/Jeffrey Ernest/Desktop/videos/Marchingband(2).mp4"
     return videoFileName
 
 # returns name for the final output video

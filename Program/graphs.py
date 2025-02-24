@@ -3,13 +3,16 @@ from imports import *
 # generates all analysis graphs from the collected data
 def generate_all_graphs(cycle_one):
 
-    beat_plot_graph(cycle_one.processing_intervals, cycle_one.filtered_significant_beats, cycle_one.y_peaks, cycle_one.y_valleys, cycle_one.y)    
+    beat_plot_graph(cycle_one.processing_intervals, cycle_one.filtered_significant_beats, cycle_one.y_peaks, cycle_one.y_valleys, cycle_one.y)
     
     hand_path_graph(cycle_one.x, cycle_one.y)
 
-    cluster_graph(cycle_one.beat_coordinates)
+    time_signature = overtime_graph(cycle_one.y)  # Calculate time signature
+      # Print the time signature used
+    print(f"Time Signature Used: {time_signature}/4")
 
-    overtime_graph(cycle_one.y)
+    # Pass time_signature to cluster_graph
+    cluster_graph(cycle_one.beat_coordinates, time_signature)  # Use the calculated time signature
 
     swaying_graph(cycle_one.swaying_detector.midpoints_x, cycle_one.swaying_detector.default_midpoint_history, cycle_one.swaying_detector.sway_threshold)
     
@@ -50,7 +53,6 @@ def beat_plot_graph(intervals, beats, y_peaks, y_valleys, y):
 
 # generates visualization of conducting pattern with color gradient
 def hand_path_graph(x_proc, y_proc):
-    plt.figure(figsize=(12, 6))
     
     # prepare valid data points
     valid_mask = ~(np.isnan(x_proc) | np.isnan(y_proc))
@@ -85,29 +87,42 @@ def hand_path_graph(x_proc, y_proc):
     plt.show()
 
 # generates the plot for showing the clusters of the beats
-def cluster_graph(beat_coordinates):  
-    plt.xlabel("X-Coords")
-    plt.ylabel("Y-Coords")
+def cluster_graph(beat_coordinates, time_signature):
+    num_clusters = time_signature
+    coordinates = np.array(beat_coordinates)
 
-    # Define colors for the beats
-    colors = ['red', 'blue', 'green', 'orange']  # List of colors for beats
+    # Perform KMeans clustering
+    kmeans = KMeans(n_clusters=num_clusters)
+    kmeans.fit(coordinates)
+    labels = kmeans.labels_
+    centers = kmeans.cluster_centers_
 
-    # Plot the beats on the graph
-    if beat_coordinates:  # Check if there are any beat coordinates
-        x_beats, y_beats = zip(*beat_coordinates)  # Unzip the beat coordinates
-        
-        # Plot each beat with a color based on its index
-        for i in range(len(x_beats)):
-            # Calculate the color index based on the total number of colors
-            color_index = i % len(colors)  # Cycle through colors
-            plt.scatter(x_beats[i], y_beats[i], color=colors[color_index])  # Use the color for the current beat
+    # Plot the clusters
+    colors = ['red', 'blue', 'green', 'orange', 'purple', 'cyan', 'magenta', 'yellow']
 
+    for i in range(num_clusters):
+        cluster_points = coordinates[labels == i]
+        plt.scatter(cluster_points[:, 0], cluster_points[:, 1], color=colors[i % len(colors)], label=f'Cluster {i+1}')
+
+        # Draw a circle around the cluster
+        if len(cluster_points) > 0:
+            first_point = cluster_points[0]
+            radius = 0.05  # Adjust as needed
+            circle = plt.Circle(first_point, radius, color=colors[i % len(colors)], fill=False, linestyle='--', linewidth=2)
+            plt.gca().add_patch(circle)
+
+    # Set plot attributes
     plt.xlabel("X-Coords")
     plt.ylabel("Y-Coords")
     plt.title("Hand Cluster Plot")
+    plt.legend()
     plt.grid(True, linestyle='--', alpha=0.7)
-    plt.savefig(video_cluster_plot_name() + '.png', bbox_inches='tight')  # Save with appropriate name
+    plt.savefig(video_cluster_plot_name() + '.png', bbox_inches='tight')
     plt.show()
+
+    # Print the time signature used
+    print(f"Time Signature Used: {time_signature}/4")
+
 
 # generates the plot for the y over the whole video
 def overtime_graph(y):
@@ -128,6 +143,9 @@ def overtime_graph(y):
     y_peaks, _ = find_peaks(-np.array(y_normalized), prominence=prominence, distance=distance)
     y_valleys, _ = find_peaks(y_normalized, prominence=prominence, distance=distance)
 
+    # Calculate time signature
+    time_signature = estimate_time_signature(y_peaks, y_normalized)
+
     # Mark peaks and valleys on the plot
     for valley in y_valleys:
         plt.plot(valley, -y_normalized[valley], 'o', color='purple', label="Downbeat" if valley == y_valleys[0] else None)
@@ -135,24 +153,6 @@ def overtime_graph(y):
     for peak in y_peaks:
         plt.plot(peak, -y_normalized[peak], 'o', color='blue', label="Peak" if peak == y_peaks[0] else None)
         plt.text(peak, -y_normalized[peak], 'Peak', color='blue', fontsize=8, ha='right')
-
-    # Estimate time signature from peaks
-    peak_heights = [-y_normalized[i] for i in y_peaks]
-    
-    if peak_heights:
-        large_wave_threshold = np.percentile(peak_heights, 75)
-        large_wave_indices = [i for i in y_peaks if -y_normalized[i] > large_wave_threshold]
-        small_wave_counts = []
-
-        for i in range(1, len(large_wave_indices)):
-            small_wave_count = sum(1 for j in y_peaks if large_wave_indices[i-1] < j < large_wave_indices[i] and -y_normalized[j] <= large_wave_threshold)
-            small_wave_counts.append(small_wave_count)
-
-            time_signature = small_wave_count + 1
-            print(f"Estimated Time Signature at frame {large_wave_indices[i]}: {time_signature}/4")
-
-    else:
-        print("No significant peaks detected to determine time signature.")
 
     # Print detected peaks for debugging
     print("Detected Peaks and Heights:")
@@ -169,6 +169,26 @@ def overtime_graph(y):
     # Save the plot
     plt.savefig(video_overtime_plot_name() + '.png', bbox_inches='tight')
     plt.show()
+
+    return time_signature
+
+def estimate_time_signature(y_peaks, y_normalized):
+    # Check if y_peaks is empty using .size
+    if y_peaks.size == 0:
+        return 4  # Default to 4 if no peaks detected
+
+    # Example logic: Count the number of beats in a certain window
+    large_wave_threshold = np.percentile([-y_normalized[i] for i in y_peaks], 75)
+    large_wave_indices = [i for i in y_peaks if -y_normalized[i] > large_wave_threshold]
+    small_wave_counts = []
+
+    for i in range(1, len(large_wave_indices)):
+        small_wave_count = sum(1 for j in y_peaks if large_wave_indices[i-1] < j < large_wave_indices[i] and -y_normalized[j] <= large_wave_threshold)
+        small_wave_counts.append(small_wave_count)
+
+    time_signature = small_wave_count + 1 if small_wave_counts else 4  # Default to 4 if no small waves detected
+    print(f"Estimated Time Signature: {time_signature}/4")
+    return time_signature
 
 
 # generates plot showing swaying detection data
