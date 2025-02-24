@@ -7,8 +7,9 @@ def generate_all_graphs(cycle_one):
     
     hand_path_graph(cycle_one.x, cycle_one.y)
 
-    time_signature = overtime_graph(cycle_one.y)  # Calculate time signature
-      # Print the time signature used
+    time_signature = overtime_graph(cycle_one.y)  # Calculate time signature, also calls graph to be displayed
+    
+    # Print the time signature used
     print(f"Time Signature Used: {time_signature}/4")
 
     # Pass time_signature to cluster_graph
@@ -57,7 +58,6 @@ def hand_path_graph(x_proc, y_proc):
     # prepare valid data points
     valid_mask = ~(np.isnan(x_proc) | np.isnan(y_proc))
     x_valid = x_proc[valid_mask]
-    # x_valid = -x_valid # turn on iff the x cord is inverted
     y_valid = y_proc[valid_mask]
     y_valid = -y_valid  
     
@@ -91,6 +91,9 @@ def cluster_graph(beat_coordinates, time_signature):
     num_clusters = time_signature
     coordinates = np.array(beat_coordinates)
 
+    # Invert the y-coordinates
+    coordinates[:, 1] = -coordinates[:, 1]
+
     # Perform KMeans clustering
     kmeans = KMeans(n_clusters=num_clusters)
     kmeans.fit(coordinates)
@@ -103,13 +106,6 @@ def cluster_graph(beat_coordinates, time_signature):
     for i in range(num_clusters):
         cluster_points = coordinates[labels == i]
         plt.scatter(cluster_points[:, 0], cluster_points[:, 1], color=colors[i % len(colors)], label=f'Cluster {i+1}')
-
-        # Draw a circle around the cluster
-        if len(cluster_points) > 0:
-            first_point = cluster_points[0]
-            radius = 0.05  # Adjust as needed
-            circle = plt.Circle(first_point, radius, color=colors[i % len(colors)], fill=False, linestyle='--', linewidth=2)
-            plt.gca().add_patch(circle)
 
     # Set plot attributes
     plt.xlabel("X-Coords")
