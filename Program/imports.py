@@ -14,6 +14,7 @@ import mediapipe as mp
 from mediapipe.framework.formats import landmark_pb2
 
 # Local imports
+from cueing import *
 from names import *
 from pattern import *
 from mp_declaration import mediaPipeDeclaration

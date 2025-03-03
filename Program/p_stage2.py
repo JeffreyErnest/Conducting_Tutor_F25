@@ -82,7 +82,7 @@ def print_beats(frame_index, annotated_image_bgr, filtered_significant_beats, be
 
 # processes video for second pass, displaying beats and generating analysis
 def output_process_video(cap, out, detector, filtered_significant_beats, processing_intervals, 
-                        swaying_detector, mirror_detector):
+                        swaying_detector, mirror_detector, cueing_detector):
     # Add debug information at start
     print("\n=== Cycle Two Debug Information ===")
     fps = int(cap.get(cv2.CAP_PROP_FPS))
@@ -99,7 +99,7 @@ def output_process_video(cap, out, detector, filtered_significant_beats, process
     beats = []
     text_display_counter = 0
     frame_index = 0
-
+    
     while cap.isOpened():
         success, image = cap.read()
         if not success:
@@ -121,6 +121,12 @@ def output_process_video(cap, out, detector, filtered_significant_beats, process
         
         # Print swaying to annotated video
         swaying_detector.swaying_print(frame_index, annotated_image_bgr)
+
+        # Get the Y-coordinates of the hands for cueing
+        left_hand_y = mirror_detector.left_hand_y[frame_index] if frame_index < len(mirror_detector.left_hand_y) else 0
+        
+        # Call print_cueing to display crescendo/decrescendo using the cueing_detector
+        cueing_detector.print_cueing(annotated_image_bgr, mirror_detector, left_hand_y)
 
         # display frame number and update display
         cv2.putText(annotated_image_bgr, f'Frame: {frame_index}', (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
