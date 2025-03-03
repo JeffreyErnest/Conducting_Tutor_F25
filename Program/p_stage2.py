@@ -82,7 +82,7 @@ def print_beats(frame_index, annotated_image_bgr, filtered_significant_beats, be
 
 # processes video for second pass, displaying beats and generating analysis
 def output_process_video(cap, out, detector, filtered_significant_beats, processing_intervals, 
-                        swaying_detector):
+                        swaying_detector, mirror_detector):
     # Add debug information at start
     print("\n=== Cycle Two Debug Information ===")
     fps = int(cap.get(cv2.CAP_PROP_FPS))
@@ -113,7 +113,13 @@ def output_process_video(cap, out, detector, filtered_significant_beats, process
 
         if is_within_intervals(frame_index, processing_intervals):
             text_display_counter = print_beats(frame_index, annotated_image_bgr, filtered_significant_beats, beats, fps, bpm_window, text_display_counter)
-
+      
+        # Get the midpoint from swaying detector
+        midpoint_x = swaying_detector.default_midpoint_x
+        # Print mirroring on the annotated image, passing the midpoint
+        mirror_detector.print_mirroring(frame_index, annotated_image_bgr, midpoint_x)
+        
+        # Print swaying to annotated video
         swaying_detector.swaying_print(frame_index, annotated_image_bgr)
 
         # display frame number and update display
