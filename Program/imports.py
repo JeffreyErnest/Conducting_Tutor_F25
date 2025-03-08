@@ -6,7 +6,7 @@ from matplotlib.collections import LineCollection
 from matplotlib.colors import LinearSegmentedColormap
 from scipy.signal import find_peaks
 from numpy import mean
-from sklearn.cluster import KMeans  # Add this import for clustering
+from sklearn.cluster import KMeans # type: ignore 
 
 
 # Mediapipe imports
@@ -15,6 +15,7 @@ from mediapipe.framework.formats import landmark_pb2
 
 # Local imports
 from cueing import *
+from cueing import cueingDetection
 from names import *
 from pattern import *
 from mp_declaration import mediaPipeDeclaration
@@ -24,3 +25,4 @@ from beat_filter import filter_beats
 from sway import swayingDetection
 from mirror import mirrorDetection
 from graphs import generate_all_graphs, overtime_graph
+from elbow import *

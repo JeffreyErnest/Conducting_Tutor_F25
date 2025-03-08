@@ -16,7 +16,7 @@ from imports import *
 
 #     #also and end movment
 
-class CueingDetector:
+class cueingDetection:
     def __init__(self):
         self.previous_left_hand_y = None  # Y-coordinate from 5 frames ago
         self.non_mirroring_frame_count = 0  # Counter for non-mirroring frames (used for waiting a certain amount of frames before processing)
@@ -48,3 +48,4 @@ class CueingDetector:
             # Reset the counter and previous Y-coordinate if mirroring is detected
             self.non_mirroring_frame_count = 0
             self.previous_left_hand_y = None  # Reset previous Y-coordinate
+

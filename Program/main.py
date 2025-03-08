@@ -24,7 +24,8 @@ class cycleOne:
         # initialize movement detectors
         self.swaying_detector = swayingDetection()
         self.mirror_detector = mirrorDetection()
-        self.cueing_detector = CueingDetector()
+        self.cueing_detector = cueingDetection() 
+        self.elbow_detector = elbowDetection()
 
         # setup video writer
         self.frame_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -44,7 +45,7 @@ class cycleOne:
         print("================================\n")
 
         # process video and detect beats
-        process_video(self.cap, self.out, self.detector, self.frame_array, self.processed_frame_array, self.processing_intervals, self.swaying_detector, self.mirror_detector)
+        process_video(self.cap, self.out, self.detector, self.frame_array, self.processed_frame_array, self.processing_intervals, self.swaying_detector, self.mirror_detector, self.elbow_detector)
         
         # analyze detected movements for beats
         (self.filtered_significant_beats, self.beat_coordinates, self.y_peaks, self.y_valleys, self.y, self.x) = filter_beats(self.frame_array, self.processed_frame_array)
@@ -72,6 +73,7 @@ class cycleTwo:
         self.swaying_detector = cycle_one_instance.swaying_detector
         self.mirror_detector = cycle_one_instance.mirror_detector
         self.cueing_detector = cycle_one_instance.cueing_detector
+        self.elbow_detector = cycle_one_instance.elbow_detector
         self.pattern_detector = patternDetection()
 
         # setup video writer
@@ -83,7 +85,7 @@ class cycleTwo:
         # process video with detected beats
         output_process_video(self.cap, self.out, self.detector, cycle_one_instance.filtered_significant_beats, 
                             cycle_one_instance.processing_intervals, self.swaying_detector, self.mirror_detector, 
-                            self.cueing_detector)
+                            self.cueing_detector, self.elbow_detector)
         
         # Detect patterns and write to file
         patterns = self.pattern_detector.pattern_detection(cycle_one_instance.beat_coordinates)

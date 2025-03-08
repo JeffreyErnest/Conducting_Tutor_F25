@@ -82,7 +82,7 @@ def print_beats(frame_index, annotated_image_bgr, filtered_significant_beats, be
 
 # processes video for second pass, displaying beats and generating analysis
 def output_process_video(cap, out, detector, filtered_significant_beats, processing_intervals, 
-                        swaying_detector, mirror_detector, cueing_detector):
+                        swaying_detector, mirror_detector, cueing_detector, elbow_detector):
     # Add debug information at start
     print("\n=== Cycle Two Debug Information ===")
     fps = int(cap.get(cv2.CAP_PROP_FPS))
@@ -121,6 +121,9 @@ def output_process_video(cap, out, detector, filtered_significant_beats, process
         
         # Print swaying to annotated video
         swaying_detector.swaying_print(frame_index, annotated_image_bgr)
+
+        # Print elbow to far out to video
+        elbow_detector.elbow_print(frame_index, annotated_image_bgr)
 
         # Get the Y-coordinates of the hands for cueing
         left_hand_y = mirror_detector.left_hand_y[frame_index] if frame_index < len(mirror_detector.left_hand_y) else 0
