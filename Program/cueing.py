@@ -22,15 +22,22 @@ class CueingDetector:
         self.non_mirroring_frame_count = 0  # Counter for non-mirroring frames (used for waiting a certain amount of frames before processing)
 
     def print_cueing(self, annotated_image_bgr, mirror_detector, left_hand_y):
+        # Define a threshold for significant movement
+        significant_movement_threshold = .005  
+
         # Check if mirroring is not detected
         if not mirror_detector.is_mirroring:
             self.non_mirroring_frame_count += 1  # Increment the counter
 
             # Check if we have a previous Y-coordinate to compare
-            if self.previous_left_hand_y is not None and self.non_mirroring_frame_count >= 10: # 10 is the number of frames we wait
-                if left_hand_y > self.previous_left_hand_y:  # Hand is moving up
+            if self.previous_left_hand_y is not None and self.non_mirroring_frame_count >= 5:  # 10 is the number of frames we wait
+                # Calculate the distance moved
+                distance_moved = left_hand_y - self.previous_left_hand_y
+
+                # Only detect movement if it exceeds the significant movement threshold
+                if distance_moved > significant_movement_threshold:  # Hand is moving up
                     cv2.putText(annotated_image_bgr, "Decrescendo", (50, 200), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 2)
-                elif left_hand_y < self.previous_left_hand_y:  # Hand is moving down
+                elif distance_moved < -significant_movement_threshold:  # Hand is moving down
                     cv2.putText(annotated_image_bgr, "Crescendo", (50, 200), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 2)
 
             # Update the previous Y-coordinate every frame
