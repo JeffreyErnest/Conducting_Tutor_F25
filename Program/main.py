@@ -26,6 +26,7 @@ class cycleOne:
         self.mirror_detector = mirrorDetection()
         self.cueing_detector = cueingDetection() 
         self.elbow_detector = elbowDetection()
+        self.start_end_detector = startEndDetection()
 
         # setup video writer
         self.frame_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -45,7 +46,7 @@ class cycleOne:
         print("================================\n")
 
         # process video and detect beats
-        process_video(self.cap, self.out, self.detector, self.frame_array, self.processed_frame_array, self.processing_intervals, self.swaying_detector, self.mirror_detector, self.elbow_detector)
+        process_video(self.cap, self.out, self.detector, self.frame_array, self.processed_frame_array, self.processing_intervals, self.swaying_detector, self.mirror_detector, self.elbow_detector, self.start_end_detector)
         
         # analyze detected movements for beats
         (self.filtered_significant_beats, self.beat_coordinates, self.y_peaks, self.y_valleys, self.y, self.x) = filter_beats(self.frame_array, self.processed_frame_array)

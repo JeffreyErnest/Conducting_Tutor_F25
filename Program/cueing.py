@@ -1,20 +1,8 @@
-# This file includes the logic for the live start of the program. In which a user
-# brings the band to attention; this will start the tacking in the program.
+# This file has the logic or detecting if a person is raising or lowering their hand
+# meaing that the band should play lounder or softer.
 
 from imports import *
 
-# #what needs to be coded
-#     #delcare mediapipe
-# def program_start(detection_result):
-#     pose_landmarks_list = detection_result.pose_landmarks
-
-#     #track movement. 
-#     #running in live mode?
-#     #if we notice the speific movment
-#         #turn a flag to ture that starts the program.
-#     return
-
-#     #also and end movment
 
 class cueingDetection:
     def __init__(self):

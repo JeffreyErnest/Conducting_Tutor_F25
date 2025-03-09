@@ -21,7 +21,7 @@ def process_frame(cap, detector, image):
     return annotated_image_bgr, detection_result
 
 # processes landmarks for each frame, tracking hand positions and movement
-def process_landmarks(detection_result, frame_array, processed_frame_array, processing_active, swaying_detector, mirror_detector, elbow_dectector):
+def process_landmarks(detection_result, frame_array, processed_frame_array, processing_active, swaying_detector, mirror_detector, elbow_detector, start_end_detector):
     pose_landmarks_list = detection_result.pose_landmarks
     if pose_landmarks_list:
         for landmarks in pose_landmarks_list:
@@ -45,14 +45,19 @@ def process_landmarks(detection_result, frame_array, processed_frame_array, proc
                 # update movement detectors
                 mirror_detector.mirror_calculation(x15, y15, x16, y16)
                 swaying_detector.midpoint_calculation(x12, landmarks [11].x)
-
-                #14 is elbow, 16 is shoulder, 24 is hip saved to be used
-                elbow_dectector.elbow_calculation((landmarks [14].x,landmarks [14].y), (x12, y12), (landmarks [24].x, landmarks [24].y))
                 
+                #14 is elbow, 16 is shoulder, 24 is hip saved to be used
+                elbow_detector.elbow_calculation((landmarks [14].x,landmarks [14].y), (x12, y12), (landmarks [24].x, landmarks [24].y))
+
+                if not processing_active:
+                    processing_active = start_end_detector.start_processing(y16, y15)
+                elif processing_active:
+                    processing_active = start_end_detector.end_processing(x16, x15, y16, y15)
+
                 # Set the midpoint when processing starts
                 if processing_active and not swaying_detector.midpointflag:
                     swaying_detector.set_midpoint()  # This will set the default midpoint only when processing starts
-    return
+    return processing_active
 
 # handles keyboard input for starting/stopping processing and exiting
 def handle_user_input(key, frame_number, processing_active, current_start_frame, swaying_detector, processing_intervals):
@@ -83,7 +88,7 @@ def handle_user_input(key, frame_number, processing_active, current_start_frame,
     return processing_active, current_start_frame
 
 # main video processing loop
-def process_video(cap, out, detector, frame_array, processed_frame_array, processing_intervals, swaying_detector, mirror_detector, elbow_dectector):
+def process_video(cap, out, detector, frame_array, processed_frame_array, processing_intervals, swaying_detector, mirror_detector, elbow_detector, start_end_detector):
     print("\n=== Video Processing Debug Information ===")
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     fps = int(cap.get(cv2.CAP_PROP_FPS))
@@ -118,8 +123,9 @@ def process_video(cap, out, detector, frame_array, processed_frame_array, proces
         if annotated_image_bgr is not None:
             # display and process frame
             cv2.imshow('Video Feed - Selection Mode', annotated_image_bgr)
-            process_landmarks(detection_result, frame_array, processed_frame_array, 
-                           processing_active, swaying_detector, mirror_detector, elbow_dectector)
+            processing_active = process_landmarks(detection_result, frame_array, processed_frame_array, 
+                                                  processing_active, swaying_detector, mirror_detector, 
+                                                  elbow_detector, start_end_detector)
 
             # add frame number and save frame
             cv2.putText(annotated_image_bgr, f'Frame: {frame_number}', (10, 50), 
