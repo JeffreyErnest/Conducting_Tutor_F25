@@ -63,6 +63,6 @@ class elbowDetection:
         # Convert the angle to degrees
         angle_degrees = math.degrees(angle_radians)
 
-        print(f"Calculated angle: {angle_degrees}")
+        # print(f"Calculated angle: {angle_degrees}")
         
         return angle_degrees

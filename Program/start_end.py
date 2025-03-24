@@ -39,7 +39,7 @@ class startEndDetection:
             if self.frame_count_since_movement < 30: # Requires a full second (change to frame of video, later)
                self.frame_count_since_movement += 1  # Increment frame count
             else:
-                print ("Started Processing")
+                # print ("Started Processing")
                 self.processing_active = True
         elif left_dropped_down or right_dropped_down:  # Check if hands have dropped
             self.frame_count_since_movement = 0  # Reset the frame count
@@ -77,7 +77,7 @@ class startEndDetection:
         
         # Use the flags in the condition
         if self.processing_active and (hands_crossed or no_movement_for_2_seconds):
-            print("Ended processing.")
+            # print("Ended processing.")
             self.processing_active = False
 
         self.previous_y_left = left_hand_y
