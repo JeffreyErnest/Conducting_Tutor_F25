@@ -30,7 +30,7 @@ class swayingDetection:
     def set_midpoint(self):
         # This method can be called to explicitly set the midpoint when processing starts
         self.midpointflag = True  # Set the flag to indicate midpoint is set
-        self.default_midpoint_x = self.midpoint_x  # Set to current midpoint when called
+        self.default_midpoint_x = self.midpoints_x  # Set to current midpoint when called
 
     def set_midpoint_flag_true(self):
         self.midpointflag = True

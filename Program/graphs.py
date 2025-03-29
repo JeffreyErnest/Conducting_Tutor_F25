@@ -1,25 +1,112 @@
 from imports import *
+import os
+import json
+
+# Get export path from configuration
+def get_export_path():
+    try:
+        with open("interface_config.json", "r") as f:
+            config = json.load(f)
+            export_path = config.get("export_path", "output")
+            # Ensure directory exists
+            os.makedirs(export_path, exist_ok=True)
+            return export_path
+    except:
+        # Fallback to default
+        default_path = "output"
+        os.makedirs(default_path, exist_ok=True)
+        return default_path
+
+# Helper function to get video name from configuration
+def get_video_name():
+    try:
+        with open("interface_config.json", "r") as f:
+            config = json.load(f)
+            video_path = config.get("video_path", "unknown_video")
+            return os.path.basename(video_path).split('.')[0]
+    except:
+        return "unknown_video"
+
+# Video name generation functions
+def video_beat_plot_name():
+    return f"{get_video_name()}_beat_plot"
+
+def video_conduct_path_name():
+    return f"{get_video_name()}_conduct_path"
+
+def video_cluster_plot_name():
+    return f"{get_video_name()}_cluster_plot"
+
+def video_overtime_plot_name():
+    return f"{get_video_name()}_overtime_plot"
+
+def video_sway_plot_Name():
+    return f"{get_video_name()}_sway_plot"
+
+def video_hands_plot_x_name():
+    return f"{get_video_name()}_hands_x_plot"
+
+def video_hands_plot_y_name():
+    return f"{get_video_name()}_hands_y_plot"
+
+def video_out_name():
+    return f"{get_video_name()}_analyzed"
 
 # generates all analysis graphs from the collected data
-def generate_all_graphs(cycle_one):
-
-    beat_plot_graph(cycle_one.processing_intervals, cycle_one.filtered_significant_beats, cycle_one.y_peaks, cycle_one.y_valleys, cycle_one.y)
+def generate_all_graphs(cycle_one, graph_options=None):
+    # Default all options to True if none provided
+    if graph_options is None:
+        graph_options = {
+            "generate_beat_plot": True,
+            "generate_hand_path": True,
+            "generate_cluster_graph": True,
+            "generate_overtime_graph": True,
+            "generate_swaying_graph": True,
+            "generate_mirror_x_graph": True,
+            "generate_mirror_y_graph": True
+        }
     
-    hand_path_graph(cycle_one.x, cycle_one.y)
-
-    cluster_graph(cycle_one.beat_coordinates)
-
-    overtime_graph(cycle_one.y)
-
-    swaying_graph(cycle_one.swaying_detector.midpoints_x, cycle_one.swaying_detector.default_midpoint_history, cycle_one.swaying_detector.sway_threshold)
+    print("\n=== Generating Analysis Graphs ===")
     
-    mirror_x_coordinate_graph(cycle_one.mirror_detector.left_hand_x, cycle_one.mirror_detector.right_hand_x)
-        
-    mirror_y_coordinate_graph(cycle_one.mirror_detector.left_hand_y, cycle_one.mirror_detector.right_hand_y)
+    if graph_options.get("generate_beat_plot", True):
+        print("Generating beat plot...")
+        beat_plot_graph(cycle_one.processing_intervals, cycle_one.filtered_significant_beats, 
+                       cycle_one.y_peaks, cycle_one.y_valleys, cycle_one.y)
+    
+    if graph_options.get("generate_hand_path", True):
+        print("Generating hand path graph...")
+        hand_path_graph(cycle_one.x, cycle_one.y)
+
+    if graph_options.get("generate_cluster_graph", True):
+        print("Generating cluster graph...")
+        cluster_graph(cycle_one.beat_coordinates)
+
+    if graph_options.get("generate_overtime_graph", True):
+        print("Generating overtime graph...")
+        overtime_graph(cycle_one.y)
+
+    if graph_options.get("generate_swaying_graph", True):
+        print("Generating swaying graph...")
+        swaying_graph(cycle_one.swaying_detector.midpoints_x, 
+                     cycle_one.swaying_detector.default_midpoint_history, 
+                     cycle_one.swaying_detector.sway_threshold)
+    
+    if graph_options.get("generate_mirror_x_graph", True):
+        print("Generating mirror X coordinate graph...")
+        mirror_x_coordinate_graph(cycle_one.mirror_detector.left_hand_x, 
+                                cycle_one.mirror_detector.right_hand_x)
+    
+    if graph_options.get("generate_mirror_y_graph", True):
+        print("Generating mirror Y coordinate graph...")
+        mirror_y_coordinate_graph(cycle_one.mirror_detector.left_hand_y, 
+                                cycle_one.mirror_detector.right_hand_y)
+    
+    print("=== Graph Generation Complete ===\n")
 
 
 # generates plot showing beat detection and coordinate data
 def beat_plot_graph(intervals, beats, y_peaks, y_valleys, y):
+    export_path = get_export_path()
     plt.figure(figsize=(12, 6))
     
     # plot coordinate data
@@ -45,11 +132,13 @@ def beat_plot_graph(intervals, beats, y_peaks, y_valleys, y):
     plt.ylabel('Coordinate Value')
     plt.legend()
     plt.grid(True)
-    plt.savefig(video_beat_plot_name() + '.png')
-    plt.show()
+    output_file = os.path.join(export_path, video_beat_plot_name() + '.png')
+    plt.savefig(output_file)
+    plt.close()
 
 # generates visualization of conducting pattern with color gradient
 def hand_path_graph(x_proc, y_proc):
+    export_path = get_export_path()
     plt.figure(figsize=(12, 6))
     
     # prepare valid data points
@@ -81,11 +170,14 @@ def hand_path_graph(x_proc, y_proc):
     plt.ylabel("Y-Coords")
     plt.title("Conducting Pattern")
     plt.grid(True, linestyle='--', alpha=0.7)
-    plt.savefig(video_conduct_path_name() + '.png', bbox_inches='tight')
-    plt.show()
+    output_file = os.path.join(export_path, video_conduct_path_name() + '.png')
+    plt.savefig(output_file, bbox_inches='tight')
+    plt.close()
 
 # generates the plot for showing the clusters of the beats
-def cluster_graph(beat_coordinates):  
+def cluster_graph(beat_coordinates):
+    export_path = get_export_path()  
+    plt.figure(figsize=(12, 6))
     plt.xlabel("X-Coords")
     plt.ylabel("Y-Coords")
 
@@ -106,11 +198,13 @@ def cluster_graph(beat_coordinates):
     plt.ylabel("Y-Coords")
     plt.title("Hand Cluster Plot")
     plt.grid(True, linestyle='--', alpha=0.7)
-    plt.savefig(video_cluster_plot_name() + '.png', bbox_inches='tight')  # Save with appropriate name
-    plt.show()
+    output_file = os.path.join(export_path, video_cluster_plot_name() + '.png')
+    plt.savefig(output_file, bbox_inches='tight')
+    plt.close()
 
 # generates the plot for the y over the whole video
 def overtime_graph(y):
+    export_path = get_export_path()
     plt.figure(figsize=(12, 6))
 
     # Plot inverted Y coordinates for visual consistency
@@ -167,13 +261,14 @@ def overtime_graph(y):
     plt.legend()
 
     # Save the plot
-    plt.savefig(video_overtime_plot_name() + '.png', bbox_inches='tight')
-    plt.show()
+    output_file = os.path.join(export_path, video_overtime_plot_name() + '.png')
+    plt.savefig(output_file, bbox_inches='tight')
+    plt.close()
 
 
 # generates plot showing swaying detection data
 def swaying_graph(mid, default_mid, threshold):
-
+    export_path = get_export_path()
     if not mid:
         return
         
@@ -182,15 +277,35 @@ def swaying_graph(mid, default_mid, threshold):
     # Plot all midpoints
     plt.plot(range(len(mid)), mid, label='Current Midpoint X', color='b', alpha=0.7)
     
-    # Plot the default midpoints
-    plt.plot(range(len(default_mid)), default_mid, label='Default Midpoint X', color='r', alpha=0.7)
+    # Ensure default_mid has consistent data types
+    default_mid_normalized = []
+    for value in default_mid:
+        try:
+            if isinstance(value, (list, tuple, np.ndarray)):
+                # If it's a sequence, take the first element or average
+                if len(value) > 0:
+                    default_mid_normalized.append(float(value[0]))
+                else:
+                    default_mid_normalized.append(0.0)
+            else:
+                default_mid_normalized.append(float(value))
+        except (ValueError, TypeError):
+            # If conversion fails, use a default value
+            default_mid_normalized.append(0.0)
     
-    # Plot threshold lines based on default_mid values
-    upper_threshold = [value + threshold for value in default_mid]  # Calculate upper threshold
-    lower_threshold = [value - threshold for value in default_mid]  # Calculate lower threshold
-    
-    plt.plot(range(len(default_mid)), upper_threshold, color='r', linestyle='--', label='Upper Threshold X')  # Updated line
-    plt.plot(range(len(default_mid)), lower_threshold, color='r', linestyle='--', label='Lower Threshold X')  # Updated line
+    # Plot the default midpoints only if we have normalized values
+    if default_mid_normalized:
+        plt.plot(range(len(default_mid_normalized)), default_mid_normalized, 
+                label='Default Midpoint X', color='r', alpha=0.7)
+        
+        # Plot threshold lines based on default_mid values
+        upper_threshold = [value + threshold for value in default_mid_normalized]
+        lower_threshold = [value - threshold for value in default_mid_normalized]
+        
+        plt.plot(range(len(default_mid_normalized)), upper_threshold, color='r', 
+                linestyle='--', label='Upper Threshold X')
+        plt.plot(range(len(default_mid_normalized)), lower_threshold, color='r', 
+                linestyle='--', label='Lower Threshold X')
     
     # Set plot attributes and save
     plt.title('Swaying Detection Over Frame Number')
@@ -198,11 +313,18 @@ def swaying_graph(mid, default_mid, threshold):
     plt.ylabel('Midpoint X Value')
     plt.legend()
     plt.grid(True)
-    plt.savefig(video_sway_plot_Name() + '.png')
-    plt.show()
-
+    
+    # Ensure export path exists and create full path for the file
+    os.makedirs(export_path, exist_ok=True)
+    output_file = os.path.join(export_path, video_sway_plot_Name() + '.png')
+    
+    print(f"Saving swaying graph to: {output_file}")
+    plt.savefig(output_file)
+    plt.close()
+    
 # generates plot showing x-coordinate mirror movement
 def mirror_x_coordinate_graph(left_hand_x, right_hand_x):
+    export_path = get_export_path()
     if not left_hand_x or not right_hand_x:
         return
         
@@ -221,11 +343,13 @@ def mirror_x_coordinate_graph(left_hand_x, right_hand_x):
     plt.ylabel('Coordinate Value')
     plt.legend()
     plt.grid(True)
-    plt.savefig(video_hands_plot_x_name() + '.png')
-    plt.show()
+    output_file = os.path.join(export_path, video_hands_plot_x_name() + '.png')
+    plt.savefig(output_file)
+    plt.close()
 
 # generates plot showing y-coordinate mirror movement
 def mirror_y_coordinate_graph(left_hand_y, right_hand_y):
+    export_path = get_export_path()
     if not left_hand_y or not right_hand_y:
         return
 
@@ -247,5 +371,6 @@ def mirror_y_coordinate_graph(left_hand_y, right_hand_y):
     plt.ylabel('Coordinate Value')
     plt.legend()
     plt.grid(True)
-    plt.savefig(video_hands_plot_y_name() + '.png')
-    plt.show()
+    output_file = os.path.join(export_path, video_hands_plot_y_name() + '.png')
+    plt.savefig(output_file)
+    plt.close()
