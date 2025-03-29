@@ -10,6 +10,7 @@ import sys
 import threading
 
 # Global variables for external functions
+should_render_frame = True
 pygame_initialized = False
 screen = None
 window_size = (800, 600)
@@ -63,6 +64,26 @@ def ensure_pygame_initialized():
             screen = pygame.display.set_mode(window_size, pygame.RESIZABLE)
             pygame.display.set_caption("Conducting Movement Detection")
 
+# Function to determine if frames should be shown in the current state
+def should_show_frame_in_state(current_state):
+    """Determine if a frame should be shown based on current state"""
+    # Define states where the frame should be shown
+    frame_states = ["crop", "timeline"]
+    return current_state in frame_states
+
+# Function to update the render state flag
+def update_render_state():
+    """Update the should_render_frame flag based on current state"""
+    global should_render_frame, state, show_menu
+    
+    # Don't render frames when menu is shown
+    if show_menu:
+        should_render_frame = False
+        return
+    
+    # Update based on state
+    should_render_frame = should_show_frame_in_state(state)
+
 # External API functions (for other modules)
 def get_window_size():
     """Returns the current window size for external modules"""
@@ -80,10 +101,10 @@ def get_screen():
 
 def display_frame(frame):
     """Display a frame for external modules"""
-    global screen
+    global screen, should_render_frame
     ensure_pygame_initialized()
     
-    if frame is None:
+    if frame is None or not should_render_frame:
         return False
     
     # Handle different frame formats
@@ -113,6 +134,7 @@ BLUE_COLOR = (50, 50, 255)
 CHECKBOX_COLOR = (150, 150, 150)
 CHECKBOX_CHECKED_COLOR = (100, 200, 100)
 MENU_BG_COLOR = (40, 40, 40)
+PANEL_BG_COLOR = (40, 40, 40, 220)  # Semi-transparent background for panels
 FONT = pygame.font.Font(None, 30)
 SMALL_FONT = pygame.font.Font(None, 24)
 TITLE_FONT = pygame.font.Font(None, 36)
@@ -434,13 +456,16 @@ def draw_checkbox(label, x, y, width, height, checked=False, hover=False):
     # Return the entire area for mouse detection
     return pygame.Rect(x, y, width, height)
 
-# In interface.py, modify the draw_menu function to include graph selection options
-
 def draw_menu():
     """Draw settings menu overlay with categorized options"""
     global processing_options
     
-    # Draw semi-transparent background
+    # Draw a full-screen semi-transparent overlay
+    overlay = pygame.Surface((window_size[0], window_size[1]), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 150))  # Dark semi-transparent overlay
+    screen.blit(overlay, (0, 0))
+    
+    # Draw the menu panel
     menu_surface = pygame.Surface((350, window_size[1]), pygame.SRCALPHA)
     menu_surface.fill((40, 40, 40, 230))  # Semi-transparent dark background
     screen.blit(menu_surface, (window_size[0] - 350, 0))
@@ -525,6 +550,11 @@ def draw_menu():
 
 def draw_recording_interface():
     """Draw recording interface"""
+    # Draw a background panel
+    panel_rect = pygame.Rect(window_size[0]//2 - 150, 30, 300, 170)
+    pygame.draw.rect(screen, MENU_BG_COLOR, panel_rect, border_radius=10)
+    pygame.draw.rect(screen, HIGHLIGHT_COLOR, panel_rect, 2, border_radius=10)
+    
     recording_text = FONT.render("Recording Video...", True, RED_COLOR)
     screen.blit(recording_text, (window_size[0]//2 - recording_text.get_width()//2, 50))
     
@@ -592,74 +622,13 @@ def display_specific_frame(frame_number):
             return True
     return False
 
-def render_frame():
-    """Render the current frame on screen with appropriate scaling"""
-    if frame_image is not None:
-        # Get video dimensions
-        h, w = frame_image.shape[:2]
-        
-        # Calculate scaling to fit screen
-        window_w, window_h = screen.get_size()
-        scale = min(window_w / w, (window_h - 200) / h)
-        new_w, new_h = int(w * scale), int(h * scale)
-        
-        # Create surface from numpy array
-        scaled_frame = cv2.resize(frame_image, (new_w, new_h))
-        surface = pygame.surfarray.make_surface(scaled_frame.transpose(1, 0, 2))
-        
-        # Center the frame
-        x = (window_w - new_w) // 2
-        y = (window_h - new_h - 150) // 2
-        
-        screen.blit(surface, (x, y))
-        
-        # Draw crop rectangle if in crop state
-        if state == "crop":
-            # Calculate crop rect in screen coordinates
-            rel_x = crop_rect.x / w
-            rel_y = crop_rect.y / h
-            rel_w = crop_rect.width / w
-            rel_h = crop_rect.height / h
-            
-            screen_crop = pygame.Rect(
-                x + rel_x * new_w,
-                y + rel_y * new_h,
-                rel_w * new_w,
-                rel_h * new_h
-            )
-            
-            pygame.draw.rect(screen, (255, 0, 0), screen_crop, 2)
-            
-            # Draw handles at the corners and edges
-            handle_size = 10
-            handles = [
-                (screen_crop.left, screen_crop.top),                 # top-left
-                (screen_crop.left + screen_crop.width//2, screen_crop.top),    # top-center
-                (screen_crop.right, screen_crop.top),                # top-right
-                (screen_crop.left, screen_crop.top + screen_crop.height//2),   # middle-left
-                (screen_crop.right, screen_crop.top + screen_crop.height//2),  # middle-right
-                (screen_crop.left, screen_crop.bottom),              # bottom-left
-                (screen_crop.left + screen_crop.width//2, screen_crop.bottom), # bottom-center
-                (screen_crop.right, screen_crop.bottom)              # bottom-right
-            ]
-            
-            for handle_x, handle_y in handles:
-                pygame.draw.rect(screen, (255, 0, 0), 
-                               (handle_x - handle_size//2, handle_y - handle_size//2, handle_size, handle_size))
-        
-        return (x, y, new_w, new_h)
-    return None
-
-def is_mouse_over_button(button_rect, mouse_pos):
-    """Check if mouse is over a button"""
-    return button_rect.collidepoint(mouse_pos)
-
-
 def draw_crop_instructions():
     """Draw enhanced instructions for crop mode"""
     # Draw instructions panel
     panel_rect = pygame.Rect(20, 20, 320, 200)
-    pygame.draw.rect(screen, (40, 40, 40, 200), panel_rect, border_radius=5)
+    panel_surface = pygame.Surface((320, 200), pygame.SRCALPHA)
+    panel_surface.fill(PANEL_BG_COLOR)
+    screen.blit(panel_surface, (20, 20))
     pygame.draw.rect(screen, HIGHLIGHT_COLOR, panel_rect, 2, border_radius=5)
     
     # Title
@@ -789,7 +758,20 @@ def handle_crop_creation(event):
         double_click_time = current_time
         
         # Start creating a new crop if we're in the ready state
-        frame_rect = render_frame()
+        frame_rect = None
+        if should_render_frame:
+            # Get frame rect from render_frame or ui_elements
+            if 'frame_rect' in event.dict.get('ui_elements', {}):
+                frame_rect = event.dict['ui_elements']['frame_rect']
+            else:
+                h, w = frame_image.shape[:2]
+                window_w, window_h = screen.get_size()
+                scale = min(window_w / w, (window_h - 200) / h)
+                new_w, new_h = int(w * scale), int(h * scale)
+                x = (window_w - new_w) // 2
+                y = (window_h - new_h - 150) // 2
+                frame_rect = (x, y, new_w, new_h)
+                
         if frame_rect and crop_mode == "ready":
             # Check if clicking inside the rendered frame
             x, y, w, h = frame_rect
@@ -810,7 +792,20 @@ def handle_crop_creation(event):
     
     # Update crop rectangle during drag
     elif event.type == pygame.MOUSEMOTION and creating_crop and crop_mode == "creating":
-        frame_rect = render_frame()
+        # Get frame rect from render_frame or ui_elements
+        frame_rect = None
+        if should_render_frame:
+            if hasattr(event, 'dict') and 'ui_elements' in event.dict and 'frame_rect' in event.dict['ui_elements']:
+                frame_rect = event.dict['ui_elements']['frame_rect']
+            else:
+                h, w = frame_image.shape[:2]
+                window_w, window_h = screen.get_size()
+                scale = min(window_w / w, (window_h - 200) / h)
+                new_w, new_h = int(w * scale), int(h * scale)
+                x = (window_w - new_w) // 2
+                y = (window_h - new_h - 150) // 2
+                frame_rect = (x, y, new_w, new_h)
+                
         if frame_rect:
             # Convert mouse position to video coordinates
             x, y, w, h = frame_rect
@@ -861,37 +856,326 @@ def handle_crop_keyboard_events(event):
         if event.key == pygame.K_RETURN:
             # ENTER key confirms and moves to timeline
             state = "timeline"
+            should_render_frame = True
         elif event.key == pygame.K_ESCAPE:
             # ESC cancels current operation and resets to ready mode
             crop_mode = "ready"
 
+def run_interface():
+    """Run the interface and return when complete"""
+    try:
+        # Always start fresh
+        if os.path.exists("interface_config.json"):
+            os.remove("interface_config.json")
+        
+        main()
+        return True
+    except Exception as e:
+        print(f"Interface error: {e}")
+        return False
+    
+def is_mouse_over_button(button_rect, mouse_pos):
+    """Check if mouse is over a button"""
+    return button_rect.collidepoint(mouse_pos)
+
+    # Add these functions to your interface.py file, replacing the existing versions
+
+def render_frame():
+    """Render the current frame as a background layer"""
+    global should_render_frame
+    if frame_image is not None and should_render_frame:
+        # Get video dimensions
+        h, w = frame_image.shape[:2]
+        
+        # Calculate scaling to fit screen
+        window_w, window_h = screen.get_size()
+        scale = min(window_w / w, (window_h - 200) / h)
+        new_w, new_h = int(w * scale), int(h * scale)
+        
+        # Center the frame
+        x = (window_w - new_w) // 2
+        y = (window_h - new_h - 150) // 2
+        
+        # Create surface from numpy array
+        scaled_frame = cv2.resize(frame_image, (new_w, new_h))
+        surface = pygame.surfarray.make_surface(scaled_frame.transpose(1, 0, 2))
+        
+        # Blit directly to screen (as background)
+        screen.blit(surface, (x, y))
+        
+        return (x, y, new_w, new_h)
+    return None
+
+def draw_ui_layers():
+    """Draw all UI elements as separate layers on top of the video frame"""
+    global state, window_size
+    mouse_pos = pygame.mouse.get_pos()
+    frame_rect = None
+    
+    if should_render_frame:
+        frame_rect = render_frame()
+    
+    # Now draw UI layers on top based on current state
+    if state == "title":
+        # Draw semi-transparent overlay for text visibility
+        overlay = pygame.Surface((window_size[0], window_size[1]), pygame.SRCALPHA)
+        overlay.fill((20, 20, 20, 200))
+        screen.blit(overlay, (0, 0))
+        
+        title_text = TITLE_FONT.render("Conducting Movement Detection", True, TEXT_COLOR)
+        screen.blit(title_text, (window_size[0]//2 - title_text.get_width()//2, window_size[1]//4))
+        
+        start_btn = draw_button("Start", window_size[0]//2 - 100, window_size[1]//2 - 50, 200, 50, 
+                              hover=is_mouse_over_button(pygame.Rect(window_size[0]//2 - 100, window_size[1]//2 - 50, 200, 50), mouse_pos))
+        
+        record_btn = draw_button("Record Video", window_size[0]//2 - 100, window_size[1]//2 + 20, 200, 50, 
+                               hover=is_mouse_over_button(pygame.Rect(window_size[0]//2 - 100, window_size[1]//2 + 20, 200, 50), mouse_pos))
+        
+        return {'start_btn': start_btn, 'record_btn': record_btn}
+    
+    elif state == "recording":
+        overlay = pygame.Surface((window_size[0], window_size[1]), pygame.SRCALPHA)
+        overlay.fill((20, 20, 20, 200))
+        screen.blit(overlay, (0, 0))
+        
+        return {'stop_btn': draw_recording_interface()}
+    
+    elif state == "upload":
+        overlay = pygame.Surface((window_size[0], window_size[1]), pygame.SRCALPHA)
+        overlay.fill((20, 20, 20, 200))
+        screen.blit(overlay, (0, 0))
+        
+        upload_btn = draw_button("Select Video", window_size[0]//2 - 100, window_size[1]//3, 200, 50,
+                              hover=is_mouse_over_button(pygame.Rect(window_size[0]//2 - 100, window_size[1]//3, 200, 50), mouse_pos))
+        
+        buttons = {'upload_btn': upload_btn}
+        
+        if video_path:
+            # Create a background panel for the text
+            path_panel = pygame.Rect(window_size[0]//2 - 250, window_size[1]//3 + 60, 500, 40)
+            pygame.draw.rect(screen, (40, 40, 40), path_panel, border_radius=5)
+            
+            path_text = FONT.render(f"Selected: {os.path.basename(video_path)}", True, TEXT_COLOR)
+            screen.blit(path_text, (window_size[0]//2 - path_text.get_width()//2, window_size[1]//3 + 70))
+            
+            next_btn = draw_button("Next", window_size[0]//2 - 100, window_size[1]//2 + 50, 200, 50,
+                                hover=is_mouse_over_button(pygame.Rect(window_size[0]//2 - 100, window_size[1]//2 + 50, 200, 50), mouse_pos))
+            buttons['next_btn'] = next_btn
+        
+        # Add settings button
+        settings_btn = draw_button("Settings", window_size[0] - 120, 20, 100, 40,
+                               hover=is_mouse_over_button(pygame.Rect(window_size[0] - 120, 20, 100, 40), mouse_pos))
+        buttons['settings_btn'] = settings_btn
+        
+        return buttons
+    
+    elif state == "crop":
+        # Draw crop rectangle (after frame but before UI)
+        if frame_rect:
+            x, y, w, h = frame_rect
+            
+            # Calculate crop rect in screen coordinates
+            rel_x = crop_rect.x / frame_image.shape[1]
+            rel_y = crop_rect.y / frame_image.shape[0]
+            rel_w = crop_rect.width / frame_image.shape[1]
+            rel_h = crop_rect.height / frame_image.shape[0]
+            
+            screen_crop = pygame.Rect(
+                x + rel_x * w,
+                y + rel_y * h,
+                rel_w * w,
+                rel_h * h
+            )
+            
+            # Draw the crop rectangle
+            pygame.draw.rect(screen, (255, 0, 0), screen_crop, 2)
+            
+            # Draw handles at the corners and edges
+            handle_size = 10
+            handles = [
+                (screen_crop.left, screen_crop.top),                 # top-left
+                (screen_crop.left + screen_crop.width//2, screen_crop.top),    # top-center
+                (screen_crop.right, screen_crop.top),                # top-right
+                (screen_crop.left, screen_crop.top + screen_crop.height//2),   # middle-left
+                (screen_crop.right, screen_crop.top + screen_crop.height//2),  # middle-right
+                (screen_crop.left, screen_crop.bottom),              # bottom-left
+                (screen_crop.left + screen_crop.width//2, screen_crop.bottom), # bottom-center
+                (screen_crop.right, screen_crop.bottom)              # bottom-right
+            ]
+            
+            for handle_x, handle_y in handles:
+                pygame.draw.rect(screen, (255, 0, 0), 
+                              (handle_x - handle_size//2, handle_y - handle_size//2, handle_size, handle_size))
+        
+        # Draw UI elements
+        confirm_btn = draw_button("Confirm Crop", window_size[0]//2 - 100, window_size[1] - 70, 200, 50,
+                               hover=is_mouse_over_button(pygame.Rect(window_size[0]//2 - 100, window_size[1] - 70, 200, 50), mouse_pos))
+        
+        settings_btn = draw_button("Settings", window_size[0] - 120, 20, 100, 40,
+                               hover=is_mouse_over_button(pygame.Rect(window_size[0] - 120, 20, 100, 40), mouse_pos))
+        
+        # Draw instructions with semi-transparent background
+        draw_crop_instructions()
+        
+        return {'confirm_btn': confirm_btn, 'settings_btn': settings_btn, 'frame_rect': frame_rect}
+    
+    elif state == "timeline":
+        # Create a semi-transparent top panel for info
+        top_panel = pygame.Surface((window_size[0], 90), pygame.SRCALPHA)
+        top_panel.fill((20, 20, 20, 220))
+        screen.blit(top_panel, (0, 0))
+        
+        # Draw instructions
+        timeline_text = FONT.render("Select video segments to process", True, TEXT_COLOR)
+        screen.blit(timeline_text, (window_size[0]//2 - timeline_text.get_width()//2, 20))
+        
+        frame_info = FONT.render(f"Frame: {current_frame} / {total_frames}", True, TEXT_COLOR)
+        screen.blit(frame_info, (window_size[0]//2 - frame_info.get_width()//2, 50))
+        
+        # Create a semi-transparent bottom panel for controls
+        bottom_panel = pygame.Surface((window_size[0], 150), pygame.SRCALPHA)
+        bottom_panel.fill((20, 20, 20, 220))
+        screen.blit(bottom_panel, (0, window_size[1] - 150))
+        
+        # Draw status panel
+        status_panel = pygame.Surface((500, 60), pygame.SRCALPHA)
+        status_panel.fill((40, 40, 40, 220))
+        screen.blit(status_panel, (window_size[0]//2 - 250, window_size[1] - 210))
+        
+        # Draw marker count and instructions
+        process_status = "Currently recording process segment" if currently_processing else "Ready to record process segment"
+        status_color = GREEN_COLOR if currently_processing else TEXT_COLOR
+        status_text = FONT.render(process_status, True, status_color)
+        screen.blit(status_text, (window_size[0]//2 - status_text.get_width()//2, window_size[1] - 200))
+        
+        count_text = FONT.render(f"Processing segments: {len(process_markers)}", True, TEXT_COLOR)
+        screen.blit(count_text, (window_size[0]//2 - count_text.get_width()//2, window_size[1] - 180))
+        
+        # Draw playback controls
+        buttons = {}
+        
+        control_y = window_size[1] - 140  # Adjusted for better positioning
+        play_btn = draw_button("▶ Play" if not is_playing else "⏸ Pause", 
+                            window_size[0]//2 - 250, control_y, 120, 40,
+                            hover=is_mouse_over_button(pygame.Rect(window_size[0]//2 - 250, control_y, 120, 40), mouse_pos))
+        buttons['play_btn'] = play_btn
+        
+        # Draw process controls
+        start_process_btn = draw_button("Start Processing", 
+                                      window_size[0]//2 - 60, control_y, 150, 40,
+                                      hover=is_mouse_over_button(pygame.Rect(window_size[0]//2 - 60, control_y, 150, 40), mouse_pos),
+                                      active=currently_processing)
+        buttons['start_process_btn'] = start_process_btn
+        
+        stop_process_btn = draw_button("Stop Processing", 
+                                     window_size[0]//2 + 100, control_y, 150, 40,
+                                     hover=is_mouse_over_button(pygame.Rect(window_size[0]//2 + 100, control_y, 150, 40), mouse_pos),
+                                     color=RED_COLOR)
+        buttons['stop_process_btn'] = stop_process_btn
+        
+        # Draw slider for timeline navigation
+        slider_rect = draw_slider(100, window_size[1] - 100, window_size[0] - 200, 20, current_frame, total_frames)
+        buttons['slider_rect'] = slider_rect
+        
+        # Draw additional controls
+        next_btn = draw_button("Next", window_size[0] - 120, window_size[1] - 70, 100, 50,
+                            hover=is_mouse_over_button(pygame.Rect(window_size[0] - 120, window_size[1] - 70, 100, 50), mouse_pos))
+        buttons['next_btn'] = next_btn
+        
+        clear_btn = draw_button("Clear Markers", 20, window_size[1] - 70, 150, 50,
+                             hover=is_mouse_over_button(pygame.Rect(20, window_size[1] - 70, 150, 50), mouse_pos))
+        buttons['clear_btn'] = clear_btn
+        
+        new_crop_btn = draw_button("New Crop", 180, window_size[1] - 70, 150, 50,
+                                hover=is_mouse_over_button(pygame.Rect(180, window_size[1] - 70, 150, 50), mouse_pos))
+        buttons['new_crop_btn'] = new_crop_btn
+        
+        # Add settings button
+        settings_btn = draw_button("Settings", window_size[0] - 120, 20, 100, 40,
+                               hover=is_mouse_over_button(pygame.Rect(window_size[0] - 120, 20, 100, 40), mouse_pos))
+        buttons['settings_btn'] = settings_btn
+        
+        return buttons
+    
+    elif state == "export":
+        # Draw semi-transparent overlay for text visibility
+        overlay = pygame.Surface((window_size[0], window_size[1]), pygame.SRCALPHA)
+        overlay.fill((20, 20, 20, 220))
+        screen.blit(overlay, (0, 0))
+        
+        export_text = TITLE_FONT.render("Select export location", True, TEXT_COLOR)
+        screen.blit(export_text, (window_size[0]//2 - export_text.get_width()//2, window_size[1]//4))
+        
+        # Create a background panel for the path info
+        path_panel = pygame.Rect(window_size[0]//2 - 350, window_size[1]//3 - 5, 700, 40)
+        pygame.draw.rect(screen, (40, 40, 40), path_panel, border_radius=5)
+        
+        path_info = FONT.render(f"Current: {export_path}", True, TEXT_COLOR)
+        screen.blit(path_info, (window_size[0]//2 - path_info.get_width()//2, window_size[1]//3))
+        
+        # Display summary of processing segments
+        summary_text = FONT.render(f"Processing {len(process_markers)} video segment(s)", True, TEXT_COLOR)
+        screen.blit(summary_text, (window_size[0]//2 - summary_text.get_width()//2, window_size[1]//3 + 60))
+        
+        browse_btn = draw_button("Browse", window_size[0]//2 - 100, window_size[1]//2, 200, 50,
+                              hover=is_mouse_over_button(pygame.Rect(window_size[0]//2 - 100, window_size[1]//2, 200, 50), mouse_pos))
+        
+        finish_btn = draw_button("Finish & Process", window_size[0]//2 - 100, window_size[1]//2 + 100, 200, 50,
+                              hover=is_mouse_over_button(pygame.Rect(window_size[0]//2 - 100, window_size[1]//2 + 100, 200, 50), mouse_pos))
+        
+        # Add settings button
+        settings_btn = draw_button("Settings", window_size[0] - 120, 20, 100, 40,
+                               hover=is_mouse_over_button(pygame.Rect(window_size[0] - 120, 20, 100, 40), mouse_pos))
+        
+        return {'browse_btn': browse_btn, 'finish_btn': finish_btn, 'settings_btn': settings_btn}
+    
+    return {}
+
 def draw_processing_progress(current_frame, total_frames, status_text="Processing..."):
-    """Draw processing progress bar and status text"""
+    """Draw improved processing progress bar and status text"""
     global screen
     ensure_pygame_initialized()
     
+    # Clear the screen first to prevent overlapping text
+    screen.fill(BG_COLOR)
+    
+    # Draw a box to ensure text is readable
+    progress_panel = pygame.Rect(window_size[0]//2 - 250, window_size[1]//2 - 100, 500, 200)
+    pygame.draw.rect(screen, MENU_BG_COLOR, progress_panel, border_radius=10)
+    pygame.draw.rect(screen, HIGHLIGHT_COLOR, progress_panel, 2, border_radius=10)
+    
+    # Draw title
+    title_text = TITLE_FONT.render("Processing Video", True, HIGHLIGHT_COLOR)
+    screen.blit(title_text, (window_size[0]//2 - title_text.get_width()//2, 
+                          window_size[1]//2 - 80))
+    
     # Draw progress background
-    progress_rect = pygame.Rect(100, window_size[1]//2 - 30, window_size[0] - 200, 40)
+    progress_rect = pygame.Rect(window_size[0]//2 - 200, window_size[1]//2 - 30, 400, 40)
     pygame.draw.rect(screen, (50, 50, 50), progress_rect, border_radius=5)
     
     # Calculate progress percentage
     if total_frames > 0:
         progress = current_frame / total_frames
-        progress_width = int((window_size[0] - 200) * progress)
+        progress_width = int(400 * progress)
         
         # Draw progress bar
-        fill_rect = pygame.Rect(100, window_size[1]//2 - 30, progress_width, 40)
+        fill_rect = pygame.Rect(window_size[0]//2 - 200, window_size[1]//2 - 30, progress_width, 40)
         pygame.draw.rect(screen, GREEN_COLOR, fill_rect, border_radius=5)
         
         # Draw percentage text
         percent_text = FONT.render(f"{int(progress * 100)}%", True, TEXT_COLOR)
         screen.blit(percent_text, (window_size[0]//2 - percent_text.get_width()//2, 
-                                window_size[1]//2 - 25))
+                               window_size[1]//2 - 25))
+        
+        # Draw frame counter
+        frame_text = FONT.render(f"Frame: {current_frame} / {total_frames}", True, TEXT_COLOR)
+        screen.blit(frame_text, (window_size[0]//2 - frame_text.get_width()//2, 
+                              window_size[1]//2 + 30))
     
     # Draw status text
     status_surface = FONT.render(status_text, True, TEXT_COLOR)
     screen.blit(status_surface, (window_size[0]//2 - status_surface.get_width()//2, 
-                               window_size[1]//2 + 30))
+                              window_size[1]//2 + 70))
     
     # Update display
     pygame.display.flip()
@@ -900,7 +1184,7 @@ def main():
     """Main application loop"""
     global state, current_frame, resizing, resize_edge, process_markers, dragging, drag_start
     global is_playing, last_frame_time, currently_processing, process_start_frame
-    global video_path, export_path, window_size, show_menu, crop_rect
+    global video_path, export_path, window_size, show_menu, crop_rect, should_render_frame
     global is_recording
     
     # Reset state to ensure fresh start
@@ -917,6 +1201,10 @@ def main():
     # Main loop
     running = True
     while running:
+        # Update rendering state at the beginning of each frame
+        update_render_state()
+        
+        # Clear the screen at the beginning of each frame
         screen.fill(BG_COLOR)
         mouse_pos = pygame.mouse.get_pos()
         
@@ -931,181 +1219,85 @@ def main():
                 display_specific_frame(current_frame)
                 last_frame_time = current_time
         
-        # Render UI based on current state
-        if state == "title":
-            title_text = TITLE_FONT.render("Conducting Movement Detection", True, TEXT_COLOR)
-            screen.blit(title_text, (window_size[0]//2 - title_text.get_width()//2, window_size[1]//4))
-            
-            start_btn = draw_button("Start", window_size[0]//2 - 100, window_size[1]//2 - 50, 200, 50, 
-                                   hover=is_mouse_over_button(pygame.Rect(window_size[0]//2 - 100, window_size[1]//2 - 50, 200, 50), mouse_pos))
-            
-            record_btn = draw_button("Record Video", window_size[0]//2 - 100, window_size[1]//2 + 20, 200, 50, 
-                                    hover=is_mouse_over_button(pygame.Rect(window_size[0]//2 - 100, window_size[1]//2 + 20, 200, 50), mouse_pos))
+        # Draw UI layers based on state
+        ui_elements = draw_ui_layers()
         
-        elif state == "recording":
-            stop_btn = draw_recording_interface()
-        
-        elif state == "upload":
-            upload_btn = draw_button("Select Video", window_size[0]//2 - 100, window_size[1]//3, 200, 50,
-                                    hover=is_mouse_over_button(pygame.Rect(window_size[0]//2 - 100, window_size[1]//3, 200, 50), mouse_pos))
-            
-            if video_path:
-                path_text = FONT.render(f"Selected: {os.path.basename(video_path)}", True, TEXT_COLOR)
-                screen.blit(path_text, (window_size[0]//2 - path_text.get_width()//2, window_size[1]//3 + 70))
-                
-                next_btn = draw_button("Next", window_size[0]//2 - 100, window_size[1]//2 + 50, 200, 50,
-                                      hover=is_mouse_over_button(pygame.Rect(window_size[0]//2 - 100, window_size[1]//2 + 50, 200, 50), mouse_pos))
-                
-                # Add settings button
-                settings_btn = draw_button("Settings", window_size[0] - 120, 20, 100, 40,
-                                         hover=is_mouse_over_button(pygame.Rect(window_size[0] - 120, 20, 100, 40), mouse_pos))
-        elif state == "crop":
-            frame_rect = render_frame()
-            
-            confirm_btn = draw_button("Confirm Crop", window_size[0]//2 - 100, window_size[1] - 70, 200, 50,
-                                     hover=is_mouse_over_button(pygame.Rect(window_size[0]//2 - 100, window_size[1] - 70, 200, 50), mouse_pos))
-            
-            # Add settings button
-            settings_btn = draw_button("Settings", window_size[0] - 120, 20, 100, 40,
-                                     hover=is_mouse_over_button(pygame.Rect(window_size[0] - 120, 20, 100, 40), mouse_pos))
-            draw_crop_instructions()
-        elif state == "timeline":
-            frame_rect = render_frame()
-            
-            if frame_rect:
-                # Draw instructions
-                timeline_text = FONT.render("Select video segments to process", True, TEXT_COLOR)
-                screen.blit(timeline_text, (window_size[0]//2 - timeline_text.get_width()//2, 20))
-                
-                frame_info = FONT.render(f"Frame: {current_frame} / {total_frames}", True, TEXT_COLOR)
-                screen.blit(frame_info, (window_size[0]//2 - frame_info.get_width()//2, 50))
-                
-                # Draw playback controls
-                control_y = window_size[1] - 150
-                play_btn = draw_button("▶ Play" if not is_playing else "⏸ Pause", 
-                                      window_size[0]//2 - 250, control_y, 120, 40,
-                                      hover=is_mouse_over_button(pygame.Rect(window_size[0]//2 - 250, control_y, 120, 40), mouse_pos))
-                
-                # Draw process controls
-                start_process_btn = draw_button("Start Processing", 
-                                              window_size[0]//2 - 60, control_y, 150, 40,
-                                              hover=is_mouse_over_button(pygame.Rect(window_size[0]//2 - 60, control_y, 150, 40), mouse_pos),
-                                              active=currently_processing)
-                
-                stop_process_btn = draw_button("Stop Processing", 
-                                              window_size[0]//2 + 100, control_y, 150, 40,
-                                              hover=is_mouse_over_button(pygame.Rect(window_size[0]//2 + 100, control_y, 150, 40), mouse_pos),
-                                              color=RED_COLOR)
-                
-                # Draw slider for timeline navigation
-                slider_rect = draw_slider(100, window_size[1] - 100, window_size[0] - 200, 20, current_frame, total_frames)
-                
-                # Draw marker count and instructions
-                process_status = "Currently recording process segment" if currently_processing else "Ready to record process segment"
-                status_color = GREEN_COLOR if currently_processing else TEXT_COLOR
-                status_text = FONT.render(process_status, True, status_color)
-                screen.blit(status_text, (window_size[0]//2 - status_text.get_width()//2, window_size[1] - 180))
-                
-                count_text = FONT.render(f"Processing segments: {len(process_markers)}", True, TEXT_COLOR)
-                screen.blit(count_text, (window_size[0]//2 - count_text.get_width()//2, window_size[1] - 210))
-                
-                # Draw additional controls
-                next_btn = draw_button("Next", window_size[0] - 120, window_size[1] - 70, 100, 50,
-                                      hover=is_mouse_over_button(pygame.Rect(window_size[0] - 120, window_size[1] - 70, 100, 50), mouse_pos))
-                clear_btn = draw_button("Clear Markers", 20, window_size[1] - 70, 150, 50,
-                                       hover=is_mouse_over_button(pygame.Rect(20, window_size[1] - 70, 150, 50), mouse_pos))
-                
-                # Draw new crop button for multi-sequence support
-                new_crop_btn = draw_button("New Crop", 180, window_size[1] - 70, 150, 50,
-                                         hover=is_mouse_over_button(pygame.Rect(180, window_size[1] - 70, 150, 50), mouse_pos))
-                
-                # Add settings button
-                settings_btn = draw_button("Settings", window_size[0] - 120, 20, 100, 40,
-                                         hover=is_mouse_over_button(pygame.Rect(window_size[0] - 120, 20, 100, 40), mouse_pos))
-        
-        elif state == "export":
-            export_text = FONT.render("Select export location", True, TEXT_COLOR)
-            screen.blit(export_text, (window_size[0]//2 - export_text.get_width()//2, window_size[1]//4))
-            
-            path_info = FONT.render(f"Current: {export_path}", True, TEXT_COLOR)
-            screen.blit(path_info, (window_size[0]//2 - path_info.get_width()//2, window_size[1]//3))
-            
-            # Display summary of processing segments
-            summary_text = FONT.render(f"Processing {len(process_markers)} video segment(s)", True, TEXT_COLOR)
-            screen.blit(summary_text, (window_size[0]//2 - summary_text.get_width()//2, window_size[1]//3 + 40))
-            
-            browse_btn = draw_button("Browse", window_size[0]//2 - 100, window_size[1]//2, 200, 50,
-                                    hover=is_mouse_over_button(pygame.Rect(window_size[0]//2 - 100, window_size[1]//2, 200, 50), mouse_pos))
-            
-            finish_btn = draw_button("Finish & Process", window_size[0]//2 - 100, window_size[1]//2 + 100, 200, 50,
-                                    hover=is_mouse_over_button(pygame.Rect(window_size[0]//2 - 100, window_size[1]//2 + 100, 200, 50), mouse_pos))
-            
-            # Add settings button
-            settings_btn = draw_button("Settings", window_size[0] - 120, 20, 100, 40,
-                                     hover=is_mouse_over_button(pygame.Rect(window_size[0] - 120, 20, 100, 40), mouse_pos))
-        
-        # Draw menu if active
+        # Draw menu if active (should be the top-most layer)
+        menu_elements = {}
         if show_menu:
-            checkboxes, close_btn = draw_menu()
+            menu_elements = draw_menu()
         
         # Event handling
         for event in pygame.event.get():
+            # Add ui_elements to the event for crop handling
+            if not hasattr(event, 'dict'):
+                event.dict = {}
+            event.dict['ui_elements'] = ui_elements
+            
             if event.type == pygame.QUIT:
                 running = False
             
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if show_menu:
                     # Handle menu interactions
-                    for option, rect in checkboxes.items():
+                    for option, rect in menu_elements.get('checkboxes', {}).items():
                         if rect.collidepoint(mouse_pos):
                             processing_options[option] = not processing_options[option]
                     
-                    if close_btn.collidepoint(mouse_pos):
+                    if menu_elements.get('close_btn') and menu_elements['close_btn'].collidepoint(mouse_pos):
                         show_menu = False
+                        # Restore frame rendering state based on current state
+                        update_render_state()
                     
                     # Skip other button processing when menu is open
                     continue
                 
                 if state == "title":
-                    if is_mouse_over_button(pygame.Rect(window_size[0]//2 - 100, window_size[1]//2 - 50, 200, 50), mouse_pos):
+                    if 'start_btn' in ui_elements and ui_elements['start_btn'].collidepoint(mouse_pos):
                         state = "upload"
-                    elif is_mouse_over_button(pygame.Rect(window_size[0]//2 - 100, window_size[1]//2 + 20, 200, 50), mouse_pos):
+                        should_render_frame = False
+                    elif 'record_btn' in ui_elements and ui_elements['record_btn'].collidepoint(mouse_pos):
                         if start_recording():
                             state = "recording"
+                            should_render_frame = False
                 
                 elif state == "recording":
-                    if is_mouse_over_button(pygame.Rect(window_size[0]//2 - 100, window_size[1]//2, 200, 50), mouse_pos):
+                    if 'stop_btn' in ui_elements and ui_elements['stop_btn'].collidepoint(mouse_pos):
                         if stop_recording():
                             state = "crop"
+                            should_render_frame = True
                 
                 elif state == "upload":
-                    if is_mouse_over_button(pygame.Rect(window_size[0]//2 - 100, window_size[1]//3, 200, 50), mouse_pos):
+                    if 'upload_btn' in ui_elements and ui_elements['upload_btn'].collidepoint(mouse_pos):
                         if select_video():
                             display_specific_frame(0)  # Show the first frame
                     
-                    elif video_path and is_mouse_over_button(pygame.Rect(window_size[0]//2 - 100, window_size[1]//2 + 50, 200, 50), mouse_pos):
+                    elif video_path and 'next_btn' in ui_elements and ui_elements['next_btn'].collidepoint(mouse_pos):
                         state = "crop"
+                        should_render_frame = True
                         
                     # Handle settings button
-                    elif is_mouse_over_button(pygame.Rect(window_size[0] - 120, 20, 100, 40), mouse_pos):
+                    elif 'settings_btn' in ui_elements and ui_elements['settings_btn'].collidepoint(mouse_pos):
                         show_menu = True
+                        should_render_frame = False
                 
                 elif state == "crop":
-                    frame_rect = render_frame()
-                    if is_mouse_over_button(pygame.Rect(window_size[0]//2 - 100, window_size[1] - 70, 200, 50), mouse_pos):
+                    if 'confirm_btn' in ui_elements and ui_elements['confirm_btn'].collidepoint(mouse_pos):
                         state = "timeline"
-                    elif is_mouse_over_button(pygame.Rect(window_size[0] - 120, 20, 100, 40), mouse_pos):
+                        should_render_frame = True
+                    elif 'settings_btn' in ui_elements and ui_elements['settings_btn'].collidepoint(mouse_pos):
                         show_menu = True
-                    elif frame_rect:
+                        should_render_frame = False
+                    elif 'frame_rect' in ui_elements and ui_elements['frame_rect']:
                         if crop_mode == "adjusting":
                             # Check if attempting to resize or drag crop rectangle
-                            resize_edge = get_resize_edge(mouse_pos, frame_rect)
+                            resize_edge = get_resize_edge(mouse_pos, ui_elements['frame_rect'])
                             if resize_edge == "middle":
                                 # Dragging the crop rectangle
                                 dragging = True
                                 
                                 # Convert mouse pos to video coordinates for drag handling
-                                x, y, w, h = frame_rect
+                                x, y, w, h = ui_elements['frame_rect']
                                 rel_mouse_x = (mouse_pos[0] - x) / w
                                 rel_mouse_y = (mouse_pos[1] - y) / h
                                 rel_mouse_x = max(0, min(1, rel_mouse_x))
@@ -1120,16 +1312,16 @@ def main():
                 
                 elif state == "timeline":
                     # Playback controls
-                    if is_mouse_over_button(pygame.Rect(window_size[0]//2 - 250, window_size[1] - 150, 120, 40), mouse_pos):
+                    if 'play_btn' in ui_elements and ui_elements['play_btn'].collidepoint(mouse_pos):
                         is_playing = not is_playing
                         last_frame_time = time.time()
                     
                     # Process control buttons
-                    elif is_mouse_over_button(pygame.Rect(window_size[0]//2 - 60, window_size[1] - 150, 150, 40), mouse_pos) and not currently_processing:
+                    elif 'start_process_btn' in ui_elements and ui_elements['start_process_btn'].collidepoint(mouse_pos) and not currently_processing:
                         currently_processing = True
                         process_start_frame = current_frame
                         
-                    elif is_mouse_over_button(pygame.Rect(window_size[0]//2 + 100, window_size[1] - 150, 150, 40), mouse_pos) and currently_processing:
+                    elif 'stop_process_btn' in ui_elements and ui_elements['stop_process_btn'].collidepoint(mouse_pos) and currently_processing:
                         currently_processing = False
                         if process_start_frame is not None and current_frame > process_start_frame:
                             # Store current crop rectangle with process marker
@@ -1138,43 +1330,47 @@ def main():
                             process_start_frame = None
                     
                     # Settings button
-                    elif is_mouse_over_button(pygame.Rect(window_size[0] - 120, 20, 100, 40), mouse_pos):
+                    elif 'settings_btn' in ui_elements and ui_elements['settings_btn'].collidepoint(mouse_pos):
                         show_menu = True
+                        should_render_frame = False
                     
                     # New crop button - return to crop state to define a new region
-                    elif is_mouse_over_button(pygame.Rect(180, window_size[1] - 70, 150, 50), mouse_pos):
+                    elif 'new_crop_btn' in ui_elements and ui_elements['new_crop_btn'].collidepoint(mouse_pos):
                         state = "crop"
+                        should_render_frame = True
                     
                     # Navigation buttons
-                    elif is_mouse_over_button(pygame.Rect(window_size[0] - 120, window_size[1] - 70, 100, 50), mouse_pos):
+                    elif 'next_btn' in ui_elements and ui_elements['next_btn'].collidepoint(mouse_pos):
                         # Finalize any ongoing processing
                         if currently_processing and process_start_frame is not None:
                             current_crop = pygame.Rect(crop_rect)
                             process_markers.append((process_start_frame, current_frame))
                         state = "export"
+                        should_render_frame = False
                     
-                    elif is_mouse_over_button(pygame.Rect(20, window_size[1] - 70, 150, 50), mouse_pos):
+                    elif 'clear_btn' in ui_elements and ui_elements['clear_btn'].collidepoint(mouse_pos):
                         process_markers = []
                         currently_processing = False
                         process_start_frame = None
                     
                     # Handle timeline slider clicks
-                    elif is_mouse_over_button(pygame.Rect(100, window_size[1] - 100, window_size[0] - 200, 20), mouse_pos):
+                    elif 'slider_rect' in ui_elements and ui_elements['slider_rect'].collidepoint(mouse_pos):
                         rel_x = (mouse_pos[0] - 100) / (window_size[0] - 200)
                         new_frame = int(rel_x * total_frames)
                         current_frame = max(0, min(new_frame, total_frames - 1))
                         display_specific_frame(current_frame)
                 
                 elif state == "export":
-                    if is_mouse_over_button(pygame.Rect(window_size[0]//2 - 100, window_size[1]//2, 200, 50), mouse_pos):
+                    if 'browse_btn' in ui_elements and ui_elements['browse_btn'].collidepoint(mouse_pos):
                         select_export_path()
                     
-                    elif is_mouse_over_button(pygame.Rect(window_size[0]//2 - 100, window_size[1]//2 + 100, 200, 50), mouse_pos):
+                    elif 'finish_btn' in ui_elements and ui_elements['finish_btn'].collidepoint(mouse_pos):
                         save_config()
                         running = False
                     
-                    elif is_mouse_over_button(pygame.Rect(window_size[0] - 120, 20, 100, 40), mouse_pos):
+                    elif 'settings_btn' in ui_elements and ui_elements['settings_btn'].collidepoint(mouse_pos):
                         show_menu = True
+                        should_render_frame = False
             
             elif event.type == pygame.MOUSEBUTTONUP:
                 if state == "crop" and creating_crop:
@@ -1186,21 +1382,22 @@ def main():
                 if state == "crop":
                     handle_crop_keyboard_events(event)
             elif event.type == pygame.MOUSEMOTION:
-                frame_rect = render_frame()
-                # Only handle crop creation if we're actively creating a crop
-                if state == "crop" and creating_crop and crop_mode == "creating":
-                    handle_crop_creation(event)
-                # Handle crop rectangle resizing or dragging when in adjustment mode
-                elif frame_rect and (resizing or dragging) and state == "crop" and crop_mode == "adjusting":
-                    if resizing and resize_edge:
-                        update_crop_rect(mouse_pos, frame_rect, resize_edge)
-                    elif dragging and drag_start:
-                        new_drag_start = update_crop_rect(mouse_pos, frame_rect, "middle", dragging=True)
-                        if new_drag_start:
-                            drag_start = new_drag_start
+                # Only perform frame-related operations if we should be showing frames
+                if state == "crop" and should_render_frame:
+                    # Only handle crop creation if we're actively creating a crop
+                    if creating_crop and crop_mode == "creating":
+                        handle_crop_creation(event)
+                    # Handle crop rectangle resizing or dragging when in adjustment mode
+                    elif 'frame_rect' in ui_elements and (resizing or dragging) and crop_mode == "adjusting":
+                        if resizing and resize_edge:
+                            update_crop_rect(mouse_pos, ui_elements['frame_rect'], resize_edge)
+                        elif dragging and drag_start:
+                            new_drag_start = update_crop_rect(mouse_pos, ui_elements['frame_rect'], "middle", dragging=True)
+                            if new_drag_start:
+                                drag_start = new_drag_start
                 
                 # Handle timeline slider dragging
-                elif state == "timeline" and event.buttons[0] and is_mouse_over_button(pygame.Rect(100, window_size[1] - 100, window_size[0] - 200, 20), mouse_pos):
+                elif state == "timeline" and event.buttons[0] and 'slider_rect' in ui_elements and ui_elements['slider_rect'].collidepoint(mouse_pos):
                     rel_x = (mouse_pos[0] - 100) / (window_size[0] - 200)
                     new_frame = int(rel_x * total_frames)
                     current_frame = max(0, min(new_frame, total_frames - 1))
@@ -1219,143 +1416,3 @@ def main():
     
     # Return without quitting pygame so other modules can use it
     return
-
-# Create PyInstaller spec file function
-def create_pyinstaller_spec(output_name="MovementDetector"):
-    """Create a PyInstaller spec file for packaging the application"""
-    spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
-
-block_cipher = None
-
-a = Analysis(
-    ['main.py'],
-    pathex=[],
-    binaries=[],
-    datas=[],
-    hiddenimports=['numpy', 'opencv-python', 'pygame'],
-    hookspath=[],
-    hooksconfig={{}},
-    runtime_hooks=[],
-    excludes=[],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
-    noarchive=False,
-)
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
-
-exe = EXE(
-    pyz,
-    a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    [],
-    name='{output_name}',
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
-    console=False,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-    icon='icon.ico',
-)
-"""
-    
-    with open(f"{output_name}.spec", "w") as f:
-        f.write(spec_content)
-    
-    print(f"Created PyInstaller spec file: {output_name}.spec")
-    print("To build the executable, run:")
-    print(f"pyinstaller {output_name}.spec")
-    
-    return True
-
-def create_build_script():
-    """Create a script to build the executable"""
-    script_content = """import os
-import subprocess
-
-# Install required packages
-packages = [
-    "pygame",
-    "opencv-python",
-    "numpy",
-    "pyinstaller"
-]
-
-print("Installing required packages...")
-for package in packages:
-    subprocess.call(["pip", "install", package])
-
-# Run PyInstaller
-print("Building executable...")
-subprocess.call(["pyinstaller", "MovementDetector.spec"])
-
-print("Build complete. Executable is in the dist folder.")
-"""
-    
-    with open("build.py", "w") as f:
-        f.write(script_content)
-    
-    print("Created build script: build.py")
-    print("To build the executable, run: python build.py")
-    
-    return True
-
-def run_interface():
-    """Run the interface and return when complete"""
-    try:
-        # Always start fresh
-        if os.path.exists("interface_config.json"):
-            os.remove("interface_config.json")
-        
-        main()
-        return True
-    except Exception as e:
-        print(f"Interface error: {e}")
-        return False
-
-def show_help():
-    """Display help information"""
-    help_text = """
-Movement Detection Application
-
-Usage:
-    python interface.py [command]
-
-Commands:
-    --help, -h      Show this help message
-    --build         Create PyInstaller spec and build script
-    --run           Run the interface (default)
-    
-This application allows you to:
-- Record or select videos for motion detection
-- Define regions of interest through cropping
-- Select segments of the video to process
-- Configure processing options
-- Generate movement data and visualization
-"""
-    print(help_text)
-
-# If this module is run directly
-if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        command = sys.argv[1].lower()
-        if command in ["--help", "-h"]:
-            show_help()
-        elif command == "--build":
-            create_pyinstaller_spec()
-            create_build_script()
-        else:
-            main()
-            pygame.quit()
-    else:
-        main()
-        pygame.quit()

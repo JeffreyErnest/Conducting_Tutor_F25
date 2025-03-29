@@ -184,11 +184,11 @@ def output_process_video(cap, out, detector, filtered_significant_beats, process
                            cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 255), 3)
                 
                 # Also show beat on pygame screen
-                text = font.render("Beat!", True, (255, 255, 255))
-                window_size = get_window_size()
-                text_x = (window_size[0] - text.get_width()) // 2
-                text_y = (window_size[1] - text.get_height()) // 2
-                screen.blit(text, (text_x, text_y))
+                #text = font.render("Beat!", True, (255, 255, 255))
+                #window_size = get_window_size()
+                #text_x = (window_size[0] - text.get_width()) // 2
+                #text_y = (window_size[1] - text.get_height()) // 2
+                #screen.blit(text, (text_x, text_y))
                 
                 # Track beat for BPM calculation
                 beats.append(frame_index)
@@ -221,8 +221,8 @@ def output_process_video(cap, out, detector, filtered_significant_beats, process
             swaying_detector.swaying_print(frame_index, output_frame)
         
         # Update PyGame display to show current processing
-        frame_text = font.render(f"Frame: {frame_index}", True, (255, 255, 255))
-        screen.blit(frame_text, (10, 10))
+        #frame_text = font.render(f"Frame: {frame_index}", True, (255, 255, 255))
+        #screen.blit(frame_text, (10, 10))
         pygame.display.update()
         pygame.event.pump()
         pygame.time.delay(10)
