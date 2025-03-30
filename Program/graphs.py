@@ -53,7 +53,16 @@ def video_out_name():
     return f"{get_video_name()}_analyzed"
 
 # generates all analysis graphs from the collected data
-def generate_all_graphs(cycle_one, graph_options=None):
+# Add this updated function to graphs.py
+
+def generate_all_graphs(cycle_one, graph_options=None, segment_info=None):
+    """Generate all analysis graphs from the collected data.
+    
+    Parameters:
+    cycle_one (CycleOne): The cycle one instance with detection data
+    graph_options (dict): Options for which graphs to generate
+    segment_info (tuple): Optional tuple of (start_frame, end_frame) for segment-specific naming
+    """
     # Default all options to True if none provided
     if graph_options is None:
         graph_options = {
@@ -66,78 +75,122 @@ def generate_all_graphs(cycle_one, graph_options=None):
             "generate_mirror_y_graph": True
         }
     
-    print("\n=== Generating Analysis Graphs ===")
+    # Create segment suffix for filenames if segment_info is provided
+    segment_suffix = ""
+    if segment_info and len(segment_info) == 2:
+        start_frame, end_frame = segment_info
+        segment_suffix = f"_segment_{start_frame}_{end_frame}"
+    
+    print(f"\n=== Generating Analysis Graphs{' for segment' if segment_suffix else ''} ===")
     
     if graph_options.get("generate_beat_plot", True):
         print("Generating beat plot...")
         beat_plot_graph(cycle_one.processing_intervals, cycle_one.filtered_significant_beats, 
-                       cycle_one.y_peaks, cycle_one.y_valleys, cycle_one.y)
+                       cycle_one.y_peaks, cycle_one.y_valleys, cycle_one.y, segment_suffix)
     
     if graph_options.get("generate_hand_path", True):
         print("Generating hand path graph...")
-        hand_path_graph(cycle_one.x, cycle_one.y)
+        hand_path_graph(cycle_one.x, cycle_one.y, segment_suffix)
 
     if graph_options.get("generate_cluster_graph", True):
         print("Generating cluster graph...")
-        cluster_graph(cycle_one.beat_coordinates)
+        cluster_graph(cycle_one.beat_coordinates, segment_suffix)
 
     if graph_options.get("generate_overtime_graph", True):
         print("Generating overtime graph...")
-        overtime_graph(cycle_one.y)
+        overtime_graph(cycle_one.y, segment_suffix)
 
     if graph_options.get("generate_swaying_graph", True):
         print("Generating swaying graph...")
         swaying_graph(cycle_one.swaying_detector.midpoints_x, 
                      cycle_one.swaying_detector.default_midpoint_history, 
-                     cycle_one.swaying_detector.sway_threshold)
+                     cycle_one.swaying_detector.sway_threshold,
+                     segment_suffix)
     
     if graph_options.get("generate_mirror_x_graph", True):
         print("Generating mirror X coordinate graph...")
         mirror_x_coordinate_graph(cycle_one.mirror_detector.left_hand_x, 
-                                cycle_one.mirror_detector.right_hand_x)
+                                cycle_one.mirror_detector.right_hand_x,
+                                segment_suffix)
     
     if graph_options.get("generate_mirror_y_graph", True):
         print("Generating mirror Y coordinate graph...")
         mirror_y_coordinate_graph(cycle_one.mirror_detector.left_hand_y, 
-                                cycle_one.mirror_detector.right_hand_y)
+                                cycle_one.mirror_detector.right_hand_y,
+                                segment_suffix)
     
     print("=== Graph Generation Complete ===\n")
+# Modify these functions in graphs.py to correctly apply the segment_suffix
 
+# Updated beat_plot_graph function for graphs.py
 
-# generates plot showing beat detection and coordinate data
-def beat_plot_graph(intervals, beats, y_peaks, y_valleys, y):
+def beat_plot_graph(intervals, beats, y_peaks, y_valleys, y, segment_suffix=""):
     export_path = get_export_path()
     plt.figure(figsize=(12, 6))
     
     # plot coordinate data
     plt.plot(range(len(y)), y, label='Y Coordinates', color='g', alpha=0.7)
 
-    # highlight processing intervals
-    if intervals:
-        for start, end in intervals:
-            plt.axvspan(start, end, color='yellow', alpha=0.3, 
-                       label="Processed Range" if start == intervals[0][0] else None)
+    # Handle different behavior for segment graphs vs full video graph
+    if not segment_suffix:
+        # For the full video graph, highlight all processing intervals
+        if intervals:
+            for start, end in intervals:
+                # Make sure intervals are within the data range
+                if start < len(y) and end < len(y):
+                    plt.axvspan(start, end, color='yellow', alpha=0.3, 
+                               label="Processed Range" if start == intervals[0][0] else None)
+    else:
+        # For segment graphs, highlight the entire range since it's all processed
+        plt.axvspan(0, len(y)-1, color='yellow', alpha=0.2, label="Processed Range")
 
-    # plot beat markers and peaks/valleys
-    all_beats = sorted(beats)
-    for beat in all_beats:
-        plt.axvline(x=beat, color='purple', linestyle='--', 
-                   label="Beats" if beat == all_beats[0] else None)
-    plt.plot(y_peaks, [y[i] for i in y_peaks], "o", label="Y Peaks")
-    plt.plot(y_valleys, [y[i] for i in y_valleys], "o", label="Y Valleys")
+    # plot beat markers if any exist
+    if beats:
+        all_beats = [b for b in sorted(beats) if b < len(y)]
+        if all_beats:
+            for beat in all_beats:
+                plt.axvline(x=beat, color='purple', linestyle='--', 
+                           label="Beats" if beat == all_beats[0] else None)
+    
+    # Only plot peaks and valleys within the data range
+    if y_peaks is not None and len(y_peaks) > 0:
+        valid_peaks = [p for p in y_peaks if p < len(y)]
+        if valid_peaks:
+            plt.plot(valid_peaks, [y[i] for i in valid_peaks], "o", label="Y Peaks", markersize=6)
+    
+    if y_valleys is not None and len(y_valleys) > 0:
+        valid_valleys = [v for v in y_valleys if v < len(y)]
+        if valid_valleys:
+            plt.plot(valid_valleys, [y[i] for i in valid_valleys], "o", label="Y Valleys", markersize=6)
+    
+    # Set plot title based on whether it's a segment or full video
+    if segment_suffix:
+        segment_parts = segment_suffix.split("_")
+        if len(segment_parts) >= 3:
+            segment_start = segment_parts[-2]
+            segment_end = segment_parts[-1]
+            title = f'Segment Analysis - Frames {segment_start}-{segment_end}'
+        else:
+            title = f'Segment Analysis{segment_suffix}'
+            
+        # For segment plots, adjust the x-axis to show frame numbers relative to segment
+        plt.xlim(0, len(y)-1)
+    else:
+        title = 'X and Y Coordinates Over Frame Number - Full Video'
     
     # set plot attributes and save
-    plt.title('X and Y Coordinates Over Frame Number')
+    plt.title(title)
     plt.xlabel('Frame Number')
     plt.ylabel('Coordinate Value')
     plt.legend()
     plt.grid(True)
-    output_file = os.path.join(export_path, video_beat_plot_name() + '.png')
-    plt.savefig(output_file)
+    
+    # Add segment suffix to filename if provided
+    output_file = os.path.join(export_path, video_beat_plot_name() + segment_suffix + '.png')
+    plt.savefig(output_file, bbox_inches='tight', dpi=100)
     plt.close()
 
-# generates visualization of conducting pattern with color gradient
-def hand_path_graph(x_proc, y_proc):
+def hand_path_graph(x_proc, y_proc, segment_suffix=""):
     export_path = get_export_path()
     plt.figure(figsize=(12, 6))
     
@@ -170,12 +223,13 @@ def hand_path_graph(x_proc, y_proc):
     plt.ylabel("Y-Coords")
     plt.title("Conducting Pattern")
     plt.grid(True, linestyle='--', alpha=0.7)
-    output_file = os.path.join(export_path, video_conduct_path_name() + '.png')
+    
+    # Add segment suffix to filename if provided
+    output_file = os.path.join(export_path, video_conduct_path_name() + segment_suffix + '.png')
     plt.savefig(output_file, bbox_inches='tight')
     plt.close()
 
-# generates the plot for showing the clusters of the beats
-def cluster_graph(beat_coordinates):
+def cluster_graph(beat_coordinates, segment_suffix=""):
     export_path = get_export_path()  
     plt.figure(figsize=(12, 6))
     plt.xlabel("X-Coords")
@@ -198,12 +252,13 @@ def cluster_graph(beat_coordinates):
     plt.ylabel("Y-Coords")
     plt.title("Hand Cluster Plot")
     plt.grid(True, linestyle='--', alpha=0.7)
-    output_file = os.path.join(export_path, video_cluster_plot_name() + '.png')
+    
+    # Add segment suffix to filename if provided
+    output_file = os.path.join(export_path, video_cluster_plot_name() + segment_suffix + '.png')
     plt.savefig(output_file, bbox_inches='tight')
     plt.close()
 
-# generates the plot for the y over the whole video
-def overtime_graph(y):
+def overtime_graph(y, segment_suffix=""):
     export_path = get_export_path()
     plt.figure(figsize=(12, 6))
 
@@ -260,14 +315,12 @@ def overtime_graph(y):
     plt.grid(True, linestyle='--', alpha=0.7)
     plt.legend()
 
-    # Save the plot
-    output_file = os.path.join(export_path, video_overtime_plot_name() + '.png')
+    # Save the plot with segment suffix if provided
+    output_file = os.path.join(export_path, video_overtime_plot_name() + segment_suffix + '.png')
     plt.savefig(output_file, bbox_inches='tight')
     plt.close()
 
-
-# generates plot showing swaying detection data
-def swaying_graph(mid, default_mid, threshold):
+def swaying_graph(mid, default_mid, threshold, segment_suffix=""):
     export_path = get_export_path()
     if not mid:
         return
@@ -316,14 +369,15 @@ def swaying_graph(mid, default_mid, threshold):
     
     # Ensure export path exists and create full path for the file
     os.makedirs(export_path, exist_ok=True)
-    output_file = os.path.join(export_path, video_sway_plot_Name() + '.png')
+    
+    # Add segment suffix to filename if provided
+    output_file = os.path.join(export_path, video_sway_plot_Name() + segment_suffix + '.png')
     
     print(f"Saving swaying graph to: {output_file}")
     plt.savefig(output_file)
     plt.close()
-    
-# generates plot showing x-coordinate mirror movement
-def mirror_x_coordinate_graph(left_hand_x, right_hand_x):
+
+def mirror_x_coordinate_graph(left_hand_x, right_hand_x, segment_suffix=""):
     export_path = get_export_path()
     if not left_hand_x or not right_hand_x:
         return
@@ -343,12 +397,13 @@ def mirror_x_coordinate_graph(left_hand_x, right_hand_x):
     plt.ylabel('Coordinate Value')
     plt.legend()
     plt.grid(True)
-    output_file = os.path.join(export_path, video_hands_plot_x_name() + '.png')
+    
+    # Add segment suffix to filename if provided
+    output_file = os.path.join(export_path, video_hands_plot_x_name() + segment_suffix + '.png')
     plt.savefig(output_file)
     plt.close()
 
-# generates plot showing y-coordinate mirror movement
-def mirror_y_coordinate_graph(left_hand_y, right_hand_y):
+def mirror_y_coordinate_graph(left_hand_y, right_hand_y, segment_suffix=""):
     export_path = get_export_path()
     if not left_hand_y or not right_hand_y:
         return
@@ -371,6 +426,8 @@ def mirror_y_coordinate_graph(left_hand_y, right_hand_y):
     plt.ylabel('Coordinate Value')
     plt.legend()
     plt.grid(True)
-    output_file = os.path.join(export_path, video_hands_plot_y_name() + '.png')
+    
+    # Add segment suffix to filename if provided
+    output_file = os.path.join(export_path, video_hands_plot_y_name() + segment_suffix + '.png')
     plt.savefig(output_file)
     plt.close()

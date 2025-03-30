@@ -120,7 +120,504 @@ def set_export_path(path):
         os.makedirs(path)
 
 # Conducting Analysis Classes
+# Here's the complete implementation that should be added to main.py
 
+def process_segment(config, segment_index, segment_interval):
+    """Process a single segment of the video using the same approach as full video analysis"""
+    try:
+        # Extract segment information
+        start_frame, end_frame = segment_interval
+        
+        print(f"\n=== Processing Segment {segment_index+1}: Frames {start_frame}-{end_frame} ===")
+        
+        # Create a segment-specific configuration
+        segment_config = config.copy()
+        
+        # Important: Set process_markers to the segment interval
+        segment_config["process_markers"] = [segment_interval]
+        
+        # Create segment-specific output directory
+        video_name = os.path.splitext(os.path.basename(config["video_path"]))[0]
+        segment_dir = os.path.join(config["export_path"], f"{video_name}_segment_{segment_index+1}")
+        os.makedirs(segment_dir, exist_ok=True)
+        segment_config["export_path"] = segment_dir
+        
+        # Set export path for this segment
+        try:
+            from imports import set_export_path
+            set_export_path(segment_dir)
+            print(f"Export path set to: {segment_dir}")
+        except Exception as e:
+            print(f"Warning: Could not set export path for segment: {e}")
+        
+        # Run conducting analysis directly for this segment
+        # This mirrors the approach used in run_conducting_analysis but for a specific segment
+        try:
+            print(f"Running analysis for segment {segment_index+1}...")
+            
+            # Set up names.py for this segment
+            names_py_content = "from imports import *\n"
+            names_py_content += "import os\n\n"
+            names_py_content += f'VIDEO_PATH = "{segment_config["video_path"]}"\n'
+            names_py_content += f'EXPORT_PATH = "{segment_dir}"\n\n'
+            
+            # Add all the standard functions from names.py
+            # Helper functions to generate filenames
+            names_py_content += """
+# returns the name of the video file being processed
+def initialize_video():
+    # Return just the basename without extension
+    return os.path.splitext(os.path.basename(VIDEO_PATH))[0]
+
+# returns name for the final output video
+def video_out_name():
+    videoFileName = initialize_video()
+    outNames = videoFileName + "_analyzed"
+    return outNames
+
+# returns name for the main coordinates plot
+def video_plot_name():
+    videoFileName = initialize_video()
+    plotName = videoFileName + '_coordinates_plot'
+    return plotName
+
+# returns name for the sway analysis plot
+def video_sway_plot_Name():
+    videoFileName = initialize_video()
+    swayPlotName = videoFileName + '_sway_plot'
+    return swayPlotName
+
+# returns name for the x-axis hand movement plot
+def video_hands_plot_x_name():
+    videoFileName = initialize_video()
+    handsPlotName_X = videoFileName + '_hands_plot_x'
+    return handsPlotName_X
+
+# returns name for the y-axis hand movement plot
+def video_hands_plot_y_name():
+    videoFileName = initialize_video()
+    handsPlotName_Y = videoFileName + '_hands_plot_y'
+    return handsPlotName_Y
+
+# returns name for the beat detection plot
+def video_beat_plot_name():
+    videoFileName = initialize_video()
+    beatPlotName = videoFileName + '_beat_plot'
+    return beatPlotName
+
+# returns name for the conducting path visualization
+def video_conduct_path_name():
+    videoFileName = initialize_video()
+    conductPath = videoFileName + '_conduct_path'
+    return conductPath
+
+# returns name for the bpm text file
+def video_bpm_output_name():
+    videoFileName = initialize_video()
+    bpmOutputName = videoFileName + '_auto_BPM.txt'
+    return bpmOutputName
+
+# returns name for the cluster plot
+def video_cluster_plot_name():
+    videoFileName = initialize_video()
+    clusterPlotName = videoFileName + '_cluster_plot'
+    return clusterPlotName
+
+# returns name for the overtime plot
+def video_overtime_plot_name():
+    videoFileName = initialize_video()
+    overtimePlotName = videoFileName + '_overtime_plot'
+    return overtimePlotName
+
+# Helper function to join export path with filename
+def get_full_path(filename):
+    return os.path.join(EXPORT_PATH, filename)
+"""
+            
+            # Prepare the segment output file names
+            segment_suffix = f"_segment_{start_frame}_{end_frame}"
+            
+            # Write the names.py for this segment
+            with open("names.py", "w") as f:
+                f.write(names_py_content)
+            
+            # Reload the names module to ensure it picks up changes
+            import importlib
+            import names
+            importlib.reload(names)
+            
+            # Process the segment using the approach of cycle one and cycle two
+            class SegmentCycleProcessor:
+                def __init__(self, config):
+                    """Initialize the segment processing, similar to CycleOne"""
+                    if not CONDUCTING_MODULES_AVAILABLE:
+                        print("Error: Conducting analysis modules not available")
+                        return
+                    
+                    # Store config
+                    self.config = config
+                    
+                    # Get mediapipe detector
+                    self.detector = mediaPipeDeclaration.get_pose_landmarker()
+                    self.videoFileName = config["video_path"]
+                    
+                    # Initialize video capture
+                    self.cap = cv2.VideoCapture(self.videoFileName)
+                    if not self.cap.isOpened():
+                        print("Error: Could not open video file.")
+                        exit()
+                    
+                    # Initialize tracking arrays
+                    self.frame_array = []
+                    self.processed_frame_array = []
+                    
+                    # Get processing intervals
+                    self.processing_intervals = config.get("process_markers", [])
+                    
+                    # Initialize movement detectors
+                    self.swaying_detector = swayingDetection()
+                    self.mirror_detector = mirrorDetection()
+                    
+                    # Set up video writer
+                    export_path = config["export_path"]
+                    os.makedirs(export_path, exist_ok=True)
+                    
+                    # Get video properties
+                    self.frame_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                    self.frame_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                    self.fps = int(self.cap.get(cv2.CAP_PROP_FPS))
+                    
+                    # Apply crop if specified
+                    crop_data = config.get("crop_rect", None)
+                    if crop_data:
+                        self.frame_width = crop_data[2]
+                        self.frame_height = crop_data[3]
+                    
+                    # Create output file for preliminary processing
+                    output_file = os.path.join(export_path, video_beat_plot_name() + segment_suffix + '.mp4')
+                    self.out = cv2.VideoWriter(output_file, cv2.VideoWriter_fourcc(*'mp4v'), 
+                                              self.fps, (self.frame_width, self.frame_height))
+                    
+                    # Print debug info
+                    print("\n=== Segment Cycle Debug Information ===")
+                    print(f"Video File: {self.videoFileName}")
+                    print(f"Processing segment: {start_frame}-{end_frame}")
+                    print(f"Frame Width: {self.frame_width}")
+                    print(f"Frame Height: {self.frame_height}")
+                    print(f"FPS: {self.fps}")
+                    total_frames = end_frame - start_frame + 1
+                    print(f"Total Frames in segment: {total_frames}")
+                    print(f"Segment Duration: {total_frames/self.fps:.2f} seconds")
+                    print(f"Video output: {output_file}")
+                    print("================================\n")
+                    
+                    # Process video and detect beats - just like in CycleOne
+                    self.process_segment()
+                    
+                    # Analyze detected movements for beats - same as CycleOne
+                    (self.filtered_significant_beats, self.beat_coordinates, 
+                     self.y_peaks, self.y_valleys, self.y, self.x) = filter_beats(self.frame_array, 
+                                                                                self.processed_frame_array)
+                    
+                    # Print beat detection results
+                    print("\n=== Beat Filter Debug Information ===")
+                    print(f"Input frame array length: {len(self.frame_array)}")
+                    print(f"Processed frame array length: {len(self.processed_frame_array)}")
+                    print(f"Number of y peaks: {len(self.y_peaks)}")
+                    print(f"Number of y valleys: {len(self.y_valleys)}")
+                    print(f"Number of filtered beats: {len(self.filtered_significant_beats)}")
+                    print("==================================\n")
+                    
+                    # Create the analyzed video with beat visualization - this is key
+                    self.create_analyzed_video(export_path, segment_suffix)
+                    
+                    # Print beat detection summary
+                    print("\n=== Beat Detection Results ===")
+                    print(f"Total frames processed: {len(self.frame_array)}")
+                    print(f"Number of beats detected: {len(self.filtered_significant_beats)}")
+                    print("============================\n")
+                
+                def process_segment(self):
+                    """Process only the frames in this segment - similar to process_video"""
+                    if not self.processing_intervals:
+                        print("Warning: No processing intervals defined")
+                        return
+                    
+                    # Process each interval (should be just one for a segment)
+                    for interval in self.processing_intervals:
+                        start_frame, end_frame = interval
+                        frame_count = start_frame
+                        total_frames = end_frame - start_frame + 1
+                        
+                        # Set position to start frame
+                        self.cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+                        
+                        # Process frames in this interval
+                        while self.cap.isOpened() and frame_count <= end_frame:
+                            success, image = self.cap.read()
+                            if not success:
+                                break
+                            
+                            # Apply cropping if specified
+                            crop_rect = self.config.get("crop_rect", None)
+                            if crop_rect:
+                                x, y, w, h = crop_rect
+                                # Ensure crop dimensions are within image bounds
+                                height, width = image.shape[:2]
+                                x = max(0, min(x, width-1))
+                                y = max(0, min(y, height-1))
+                                w = min(w, width-x)
+                                h = min(h, height-y)
+                                
+                                if w > 0 and h > 0:
+                                    image = image[y:y+h, x:x+w]
+                                else:
+                                    print("Warning: Invalid crop dimensions, using full frame")
+                            
+                            # Process the frame with MediaPipe
+                            frame_timestamp_ms = round(self.cap.get(cv2.CAP_PROP_POS_MSEC))
+                            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
+                            detection_result = self.detector.detect_for_video(mp_image, frame_timestamp_ms)
+                            
+                            # Extract and store landmarks
+                            pose_landmarks_list = detection_result.pose_landmarks
+                            
+                            if pose_landmarks_list:
+                                for landmarks in pose_landmarks_list:
+                                    if len(landmarks) > 16:
+                                        # Get right hand coordinates
+                                        x16 = landmarks[16].x
+                                        y16 = landmarks[16].y
+                                        
+                                        # Store coordinates
+                                        self.frame_array.append((x16, y16))
+                                        self.processed_frame_array.append((x16, y16))
+                            
+                                        # Update movement detectors
+                                        self.mirror_detector.mirror_calculation(landmarks[15].x, landmarks[15].y, landmarks[16].x, landmarks[16].y)
+                                        self.swaying_detector.midpoint_calculation(landmarks[12].x, landmarks[11].x)
+                                        
+                                        # Set the midpoint when processing starts
+                                        if not self.swaying_detector.midpointflag:
+                                            self.swaying_detector.set_midpoint()
+                            else:
+                                # No landmarks detected, add NaN values
+                                self.frame_array.append((np.nan, np.nan))
+                                self.processed_frame_array.append((np.nan, np.nan))
+                            
+                            # Draw landmarks and save to video
+                            annotated_image = mediaPipeDeclaration.draw_landmarks_on_image(image_rgb, detection_result)
+                            annotated_image_bgr = cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR)
+                            
+                            # Add frame info
+                            cv2.putText(annotated_image_bgr, f'Frame: {frame_count}', (10, 30), 
+                                       cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                            cv2.putText(annotated_image_bgr, f'Segment: {start_frame}-{end_frame}', (10, 70), 
+                                       cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                            
+                            # Write to first video
+                            self.out.write(annotated_image_bgr)
+                            
+                            # Update frame counter
+                            frame_count += 1
+                            
+                            # Display progress
+                            if frame_count % 10 == 0:
+                                progress = ((frame_count - start_frame) / total_frames) * 100
+                                print(f"Processing segment {start_frame}-{end_frame}: {progress:.1f}% complete", end='\r')
+                    
+                    # Release video writer
+                    self.out.release()
+                
+                def create_analyzed_video(self, export_path, segment_suffix):
+                    """Create a final analyzed video with beat information - similar to CycleTwo"""
+                    print("\n=== Creating Analyzed Video ===")
+                    
+                    # Create a fresh detector
+                    detector = mediaPipeDeclaration.get_pose_landmarker()
+                    
+                    # Create a new video capture
+                    cap = cv2.VideoCapture(self.videoFileName)
+                    
+                    # Create output file for the analyzed video
+                    analyzed_output_file = os.path.join(export_path, video_out_name() + segment_suffix + '.mp4')
+                    
+                    # Create VideoWriter with the dimensions
+                    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                    analyzed_out = cv2.VideoWriter(analyzed_output_file, fourcc, self.fps, 
+                                                 (self.frame_width, self.frame_height))
+                    
+                    # Verify writer is opened
+                    if not analyzed_out.isOpened():
+                        print("Error: Failed to open video writer")
+                        # Try alternative codec
+                        fourcc = cv2.VideoWriter_fourcc(*'XVID')
+                        analyzed_out = cv2.VideoWriter(analyzed_output_file, fourcc, self.fps, 
+                                                     (self.frame_width, self.frame_height))
+                        if not analyzed_out.isOpened():
+                            print("Error: Failed to open video writer with alternative codec")
+                            cap.release()
+                            return
+                    
+                    # Print video details
+                    print(f"Video File: {self.videoFileName}")
+                    print(f"Frame Width: {self.frame_width}")
+                    print(f"Frame Height: {self.frame_height}")
+                    print(f"FPS: {self.fps}")
+                    print(f"Output File: {analyzed_output_file}")
+                    print(f"VideoWriter opened: {analyzed_out.isOpened()}")
+                    print(f"Processing segment: {self.processing_intervals[0][0]}-{self.processing_intervals[0][1]}")
+                    total_frames = self.processing_intervals[0][1] - self.processing_intervals[0][0] + 1
+                    print(f"Total frames to process: {total_frames}")
+                    print("================================\n")
+                    
+                    # MODIFIED VERSION: A simplified output_process_video function embedded here
+                    # This avoids the pygame display issue
+                    def simplified_output_process_video():
+                        """Simplified version of output_process_video without pygame dependencies"""
+                        for interval in self.processing_intervals:
+                            start_frame, end_frame = interval
+                            frame_count = start_frame
+                            
+                            # Set video to start frame
+                            cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+                            
+                            # Print crop info just once, not for every frame
+                            crop_rect = self.config.get("crop_rect", None)
+                            if crop_rect:
+                                print(f"Using crop rectangle: {crop_rect}")
+                            
+                            # Debug the filtered beats array to see what's in it
+                            print(f"Filtered beats: {self.filtered_significant_beats}")
+                            print(f"Processing frames: {start_frame} to {end_frame}")
+                            
+                            # Process frames
+                            while cap.isOpened() and frame_count <= end_frame:
+                                ret, frame = cap.read()
+                                if not ret:
+                                    break
+                                    
+                                # Apply crop if available
+                                if crop_rect:
+                                    x, y, w, h = crop_rect
+                                    try:
+                                        frame = frame[y:y+h, x:x+w]
+                                    except Exception as e:
+                                        print(f"Error applying crop: {e}")
+                                        # Try to continue with full frame if crop fails
+                                        pass
+                                
+                                # Process frame with MediaPipe
+                                frame_timestamp_ms = round(cap.get(cv2.CAP_PROP_POS_MSEC))
+                                image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
+                                detection_result = detector.detect_for_video(mp_image, frame_timestamp_ms)
+                                
+                                # Draw landmarks
+                                annotated_image = mediaPipeDeclaration.draw_landmarks_on_image(image_rgb, detection_result)
+                                annotated_image_bgr = cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR)
+                                
+                                # Calculate relative frame index within segment
+                                relative_frame = frame_count - start_frame
+                                
+                                # Check if this relative frame position has a beat
+                                # The filtered_significant_beats contains indexes that are relative to the segment start
+                                is_beat_frame = relative_frame in self.filtered_significant_beats
+                                
+                                # Calculate BPM if this is a beat frame - use original approach
+                                if is_beat_frame:
+                                    # Get index of this beat in the filtered beats array
+                                    beat_index = self.filtered_significant_beats.index(relative_frame)
+                                    
+                                    if beat_index > 0:
+                                        # Get previous beat (relative to segment start)
+                                        prev_beat = self.filtered_significant_beats[beat_index - 1]
+                                        
+                                        # Calculate time between beats in seconds
+                                        time_diff = (relative_frame - prev_beat) / self.fps
+                                        
+                                        # Calculate BPM
+                                        if time_diff > 0:
+                                            bpm = 60 / time_diff  # 60 seconds / time between beats
+                                        else:
+                                            bpm = 0
+                                            
+                                        print(f"\nBeats per minute (BPM) at frame {frame_count}: {bpm:.1f}\n")
+                                        
+                                        # Add BPM text
+                                        cv2.putText(annotated_image_bgr, f'BPM: {bpm:.1f}', 
+                                                (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+                                    else:
+                                        # First beat, can't calculate BPM yet
+                                        cv2.putText(annotated_image_bgr, 'First Beat', 
+                                                (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+                                
+                                # Add frame info - always show this
+                                cv2.putText(annotated_image_bgr, f'Frame: {frame_count}', 
+                                        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+                                
+                                # Add segment info
+                                cv2.putText(annotated_image_bgr, f'Segment: {start_frame}-{end_frame}', 
+                                        (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+
+                                # Add beat marker
+                                if is_beat_frame:
+                                    # Draw a red circle to indicate beat
+                                    cv2.circle(annotated_image_bgr, (30, 70), 10, (0, 0, 255), -1)
+                                    
+                                    # Add beat text
+                                    cv2.putText(annotated_image_bgr, "BEAT", 
+                                            (45, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+                                
+                                # Write the frame
+                                analyzed_out.write(annotated_image_bgr)
+                                
+                                # Increment frame counter
+                                frame_count += 1
+                                
+                                # Print progress occasionally
+                                if frame_count % 100 == 0:
+                                    progress = ((frame_count - start_frame) / (end_frame - start_frame + 1)) * 100
+                                    print(f"Processing: {progress:.1f}% complete", end='\r')
+                    try:
+                        simplified_output_process_video()
+                    except Exception as e:
+                        print(f"Error in video processing: {e}")
+                        print("Attempting to continue anyway...")
+                        traceback.print_exc()
+                    
+                    # Release resources
+                    analyzed_out.release()
+                    cap.release()
+                    print(f"Analyzed video saved to: {analyzed_output_file}")
+            
+            # Create and run the segment processor
+            segment_processor = SegmentCycleProcessor(segment_config)
+            
+            # Generate graphs for this segment - directly using graph functions
+            print("\n=== Generating Analysis Graphs for segment ===")
+            from graphs import generate_all_graphs
+            
+            # Use the segment processor to generate graphs
+            graph_options = segment_config.get("processing_options", {}).get("graph_options", None)
+            generate_all_graphs(segment_processor, graph_options, segment_interval)
+            
+            print("=== Graph Generation Complete ===\n")
+            
+            print(f"Segment {segment_index+1} processed successfully")
+            return True
+            
+        except Exception as e:
+            print(f"Error processing segment {segment_index+1}: {e}")
+            traceback.print_exc()
+            return False
+            
+    except Exception as e:
+        print(f"Error in segment processing setup: {e}")
+        traceback.print_exc()
+        return False
+    
 # handles the first pass through the video, detecting conducting movements and beats
 class CycleOne: 
     # initializes the first cycle, setting up video capture and processing parameters
@@ -324,28 +821,8 @@ def process_with_visualization(video_path, start_frame, end_frame, crop_rect, op
         total_frames = end_frame - start_frame
         
         prev_gray = None
-        
-        # Process all frames in segment
-        while frame_count < total_frames:
-            # Update progress bar
-            if frame_count % 10 == 0:
-                progress = (frame_count / total_frames) * 100
-                progress_bar = "▓" * int(progress // 2) + "░" * (50 - int(progress // 2))
-                print(f"\rProcessing: [{progress_bar}] {progress:.1f}% | Frame {frame_count}/{total_frames}", end="")
-            
-            ret, frame = cap.read()
-            if not ret:
-                break
-            
-            # Crop the frame
-            crop_frame = frame[crop_y:crop_y+crop_h, crop_x:crop_x+crop_w]
-            
-        # Complete the progress bar
-        progress_bar = "▓" * 50
-        print(f"\rProcessing: [{progress_bar}] 100.0% | Frame {frame_count}/{total_frames}")
+
         print(f"Processed segment {start_frame}-{end_frame}: 100% complete")
-        
-        
         print(f"Segment processing complete. Output saved to: {output_dir}")
         return True
         
@@ -481,6 +958,9 @@ def main():
         # Load configuration from interface
         config = load_config()
         
+        # Extract process markers
+        process_markers = config.get("process_markers", [])
+        
         # Create output directory with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         video_name = os.path.splitext(os.path.basename(config["video_path"]))[0]
@@ -507,7 +987,26 @@ def main():
             except Exception as e:
                 print(f"Warning: Could not update export path in imports.py: {e}")
             
-            run_conducting_analysis(conducting_config)
+            # Check how many segments we have
+            if len(process_markers) <= 1:
+                # Process full video analysis for single segment or no segments
+                print("\n--- Processing full video analysis ---")
+                run_conducting_analysis(conducting_config)
+            else:
+                # Skip the full video analysis and only process individual segments
+                print(f"\n--- Processing {len(process_markers)} individual segments ---")
+                for i, marker in enumerate(process_markers):
+                    # Extract segment interval
+                    if isinstance(marker, dict):
+                        segment_interval = (marker["start_frame"], marker["end_frame"])
+                    elif isinstance(marker, (list, tuple)) and len(marker) >= 2:
+                        segment_interval = (marker[0], marker[1])
+                    else:
+                        print(f"Warning: Invalid marker format: {marker}. Skipping.")
+                        continue
+                    
+                    # Process this segment
+                    process_segment(conducting_config, i, segment_interval)
         
         # Reset the path for movement detection
         try:
@@ -528,7 +1027,7 @@ def main():
                 if isinstance(marker, dict):
                     # New format with dictionary
                     start_frame = marker["start_frame"]
-                    end_frame = marker["end_frame"]
+                    end_frame = marker["end_frame"] 
                     crop = marker.get("crop", config["crop_rect"])
                 elif isinstance(marker, (list, tuple)) and len(marker) >= 2:
                     # Old format with tuple/list [start_frame, end_frame]
@@ -557,8 +1056,7 @@ def main():
         if os.name == 'nt':
             os.startfile(output_dir)
     else:
-        print("Interface closed without configuration. Exiting.")       
-
+        print("Interface closed without configuration. Exiting.")
 if __name__ == "__main__":
     try:
         main()

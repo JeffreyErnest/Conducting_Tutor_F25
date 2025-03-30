@@ -1131,55 +1131,6 @@ def draw_ui_layers():
     
     return {}
 
-def draw_processing_progress(current_frame, total_frames, status_text="Processing..."):
-    """Draw improved processing progress bar and status text"""
-    global screen
-    ensure_pygame_initialized()
-    
-    # Clear the screen first to prevent overlapping text
-    screen.fill(BG_COLOR)
-    
-    # Draw a box to ensure text is readable
-    progress_panel = pygame.Rect(window_size[0]//2 - 250, window_size[1]//2 - 100, 500, 200)
-    pygame.draw.rect(screen, MENU_BG_COLOR, progress_panel, border_radius=10)
-    pygame.draw.rect(screen, HIGHLIGHT_COLOR, progress_panel, 2, border_radius=10)
-    
-    # Draw title
-    title_text = TITLE_FONT.render("Processing Video", True, HIGHLIGHT_COLOR)
-    screen.blit(title_text, (window_size[0]//2 - title_text.get_width()//2, 
-                          window_size[1]//2 - 80))
-    
-    # Draw progress background
-    progress_rect = pygame.Rect(window_size[0]//2 - 200, window_size[1]//2 - 30, 400, 40)
-    pygame.draw.rect(screen, (50, 50, 50), progress_rect, border_radius=5)
-    
-    # Calculate progress percentage
-    if total_frames > 0:
-        progress = current_frame / total_frames
-        progress_width = int(400 * progress)
-        
-        # Draw progress bar
-        fill_rect = pygame.Rect(window_size[0]//2 - 200, window_size[1]//2 - 30, progress_width, 40)
-        pygame.draw.rect(screen, GREEN_COLOR, fill_rect, border_radius=5)
-        
-        # Draw percentage text
-        percent_text = FONT.render(f"{int(progress * 100)}%", True, TEXT_COLOR)
-        screen.blit(percent_text, (window_size[0]//2 - percent_text.get_width()//2, 
-                               window_size[1]//2 - 25))
-        
-        # Draw frame counter
-        frame_text = FONT.render(f"Frame: {current_frame} / {total_frames}", True, TEXT_COLOR)
-        screen.blit(frame_text, (window_size[0]//2 - frame_text.get_width()//2, 
-                              window_size[1]//2 + 30))
-    
-    # Draw status text
-    status_surface = FONT.render(status_text, True, TEXT_COLOR)
-    screen.blit(status_surface, (window_size[0]//2 - status_surface.get_width()//2, 
-                              window_size[1]//2 + 70))
-    
-    # Update display
-    pygame.display.flip()
-
 def main():
     """Main application loop"""
     global state, current_frame, resizing, resize_edge, process_markers, dragging, drag_start
