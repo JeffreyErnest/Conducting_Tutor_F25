@@ -53,7 +53,7 @@ def process_landmarks(detection_result, frame_array, processed_frame_array, proc
     return
 
 # main video processing loop with predetermined intervals
-def process_video(cap, out, detector, frame_array, processed_frame_array, processing_intervals, swaying_detector, mirror_detector):
+def process_video(cap, detector, frame_array, processed_frame_array, processing_intervals, swaying_detector, mirror_detector):
     print("\n=== Video Processing Debug Information ===")
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     fps = int(cap.get(cv2.CAP_PROP_FPS))
@@ -137,22 +137,11 @@ def process_video(cap, out, detector, frame_array, processed_frame_array, proces
             # Process landmarks and save annotated frame
             process_landmarks(detection_result, frame_array, processed_frame_array, 
                              is_processing, swaying_detector, mirror_detector)
-            
-            # Add frame number and processing status to the frame
-            status_text = "PROCESSING" if is_processing else "MONITORING"
-            cv2.putText(annotated_image_bgr, f'Frame: {frame_number} - {status_text}', 
-                        (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, 
-                        (0, 255, 0) if is_processing else (0, 0, 255), 2)
-            
-            # Write to output video
-            out.write(annotated_image_bgr)
-        
         # increment frame counter
         frame_number += 1
         
     # cleanup resources
     cap.release()
-    out.release()
     cv2.destroyAllWindows()
 
     print(f"Actual processed frames: {frame_number}")

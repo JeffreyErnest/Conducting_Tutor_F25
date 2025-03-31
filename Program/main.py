@@ -293,11 +293,6 @@ def get_full_path(filename):
                         self.frame_width = crop_data[2]
                         self.frame_height = crop_data[3]
                     
-                    # Create output file for preliminary processing
-                    output_file = os.path.join(export_path, video_beat_plot_name() + segment_suffix + '.mp4')
-                    self.out = cv2.VideoWriter(output_file, cv2.VideoWriter_fourcc(*'mp4v'), 
-                                              self.fps, (self.frame_width, self.frame_height))
-                    
                     # Print debug info
                     print("\n=== Segment Cycle Debug Information ===")
                     print(f"Video File: {self.videoFileName}")
@@ -308,7 +303,6 @@ def get_full_path(filename):
                     total_frames = end_frame - start_frame + 1
                     print(f"Total Frames in segment: {total_frames}")
                     print(f"Segment Duration: {total_frames/self.fps:.2f} seconds")
-                    print(f"Video output: {output_file}")
                     print("================================\n")
                     
                     # Process video and detect beats - just like in CycleOne
@@ -405,20 +399,7 @@ def get_full_path(filename):
                                 # No landmarks detected, add NaN values
                                 self.frame_array.append((np.nan, np.nan))
                                 self.processed_frame_array.append((np.nan, np.nan))
-                            
-                            # Draw landmarks and save to video
-                            annotated_image = mediaPipeDeclaration.draw_landmarks_on_image(image_rgb, detection_result)
-                            annotated_image_bgr = cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR)
-                            
-                            # Add frame info
-                            cv2.putText(annotated_image_bgr, f'Frame: {frame_count}', (10, 30), 
-                                       cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                            cv2.putText(annotated_image_bgr, f'Segment: {start_frame}-{end_frame}', (10, 70), 
-                                       cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                            
-                            # Write to first video
-                            self.out.write(annotated_image_bgr)
-                            
+                                                     
                             # Update frame counter
                             frame_count += 1
                             
@@ -427,11 +408,11 @@ def get_full_path(filename):
                                 progress = ((frame_count - start_frame) / total_frames) * 100
                                 print(f"Processing segment {start_frame}-{end_frame}: {progress:.1f}% complete", end='\r')
                     
-                    # Release video writer
-                    self.out.release()
                 
-                def create_analyzed_video(self, export_path, segment_suffix):
-                    """Create a final analyzed video with beat information - similar to CycleTwo"""
+                def create_analyzed_video(self, export_path, segment_suffix=""):
+                    """Create a final analyzed video with beat information and side panel
+                    Modified version of create_analyzed_video for SegmentCycleProcessor class
+                    """
                     print("\n=== Creating Analyzed Video ===")
                     
                     # Create a fresh detector
@@ -440,21 +421,31 @@ def get_full_path(filename):
                     # Create a new video capture
                     cap = cv2.VideoCapture(self.videoFileName)
                     
+                    # Get video properties and dimensions
+                    fps = int(cap.get(cv2.CAP_PROP_FPS))
+                    frame_width = self.frame_width
+                    frame_height = self.frame_height
+                    
+                    # Calculate dimensions for output with side panel
+                    panel_width = 250
+                    output_width = frame_width + panel_width
+                    output_height = frame_height
+                    
                     # Create output file for the analyzed video
                     analyzed_output_file = os.path.join(export_path, video_out_name() + segment_suffix + '.mp4')
                     
-                    # Create VideoWriter with the dimensions
+                    # Create VideoWriter with the combined dimensions
                     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-                    analyzed_out = cv2.VideoWriter(analyzed_output_file, fourcc, self.fps, 
-                                                 (self.frame_width, self.frame_height))
+                    analyzed_out = cv2.VideoWriter(analyzed_output_file, fourcc, fps, 
+                                                (output_width, output_height))
                     
                     # Verify writer is opened
                     if not analyzed_out.isOpened():
                         print("Error: Failed to open video writer")
                         # Try alternative codec
                         fourcc = cv2.VideoWriter_fourcc(*'XVID')
-                        analyzed_out = cv2.VideoWriter(analyzed_output_file, fourcc, self.fps, 
-                                                     (self.frame_width, self.frame_height))
+                        analyzed_out = cv2.VideoWriter(analyzed_output_file, fourcc, fps, 
+                                                    (output_width, output_height))
                         if not analyzed_out.isOpened():
                             print("Error: Failed to open video writer with alternative codec")
                             cap.release()
@@ -462,136 +453,336 @@ def get_full_path(filename):
                     
                     # Print video details
                     print(f"Video File: {self.videoFileName}")
-                    print(f"Frame Width: {self.frame_width}")
-                    print(f"Frame Height: {self.frame_height}")
-                    print(f"FPS: {self.fps}")
+                    print(f"Frame Width: {frame_width}")
+                    print(f"Frame Height: {frame_height}")
+                    print(f"Output Width: {output_width} (with panel)")
+                    print(f"FPS: {fps}")
                     print(f"Output File: {analyzed_output_file}")
-                    print(f"VideoWriter opened: {analyzed_out.isOpened()}")
                     print(f"Processing segment: {self.processing_intervals[0][0]}-{self.processing_intervals[0][1]}")
                     total_frames = self.processing_intervals[0][1] - self.processing_intervals[0][0] + 1
                     print(f"Total frames to process: {total_frames}")
                     print("================================\n")
                     
-                    # MODIFIED VERSION: A simplified output_process_video function embedded here
-                    # This avoids the pygame display issue
-                    def simplified_output_process_video():
-                        """Simplified version of output_process_video without pygame dependencies"""
-                        for interval in self.processing_intervals:
-                            start_frame, end_frame = interval
-                            frame_count = start_frame
+                    # Initialize metrics for tracking
+                    bpm_window = 5  # Window in seconds to calculate BPM
+                    beats = []
+                    current_bpm = 0
+                    beat_count = 0
+                    
+                    # Initialize conducting metrics for side panel
+                    conducting_metrics = {
+                        "current_bpm": 0,
+                        "beat_count": 0,
+                        "suggested_time_signature": "4/4",
+                        "sway_index": 0,
+                        "pattern_confidence": 0,
+                        "pattern_type": "Unknown"
+                    }
+                    
+                    # Store y-coordinates for time signature estimation
+                    y_coords = []
+                    
+                    # Function to create side panel
+                    def create_side_panel(metrics, frame_height, panel_width, frame_index, segment_info):
+                        """Create a side panel with conducting analysis information"""
+                        # Create blank panel
+                        panel = np.zeros((frame_height, panel_width, 3), dtype=np.uint8)
+                        panel[:, :] = (40, 40, 40)  # Dark gray background
+                        
+                        # Add title
+                        cv2.putText(panel, "Conducting Analysis", (10, 30), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                        
+                        # Add horizontal line
+                        cv2.line(panel, (10, 40), (panel_width-10, 40), (200, 200, 200), 1)
+                        
+                        # Add metrics
+                        y_pos = 80
+                        cv2.putText(panel, f"Current BPM: {metrics['current_bpm']:.1f}", (10, y_pos), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+                        
+                        y_pos += 40
+                        cv2.putText(panel, f"Beats detected: {metrics['beat_count']}", (10, y_pos), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+                        
+                        y_pos += 40
+                        cv2.putText(panel, f"Time signature: {metrics['suggested_time_signature']}", (10, y_pos), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+                        
+                        y_pos += 40
+                        cv2.putText(panel, f"Pattern: {metrics['pattern_type']}", (10, y_pos), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+                        
+                        y_pos += 40
+                        cv2.putText(panel, f"Pattern conf: {metrics['pattern_confidence']}%", (10, y_pos), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+                        
+                        y_pos += 40
+                        cv2.putText(panel, f"Sway index: {metrics['sway_index']:.2f}", (10, y_pos), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+                        
+                        # Add segment info
+                        y_pos += 60
+                        start_frame, end_frame = segment_info
+                        cv2.putText(panel, f"Segment: {start_frame}-{end_frame}", (10, y_pos), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+                        
+                        # Add progress bar
+                        y_pos += 30
+                        total_frames = end_frame - start_frame
+                        progress = min(1.0, max(0, (frame_index - start_frame) / total_frames if total_frames > 0 else 0))
+                        bar_width = panel_width - 20
+                        cv2.rectangle(panel, (10, y_pos), (10 + bar_width, y_pos + 15), (100, 100, 100), -1)
+                        cv2.rectangle(panel, (10, y_pos), (10 + int(bar_width * progress), y_pos + 15), (0, 255, 0), -1)
+                        
+                        # Add percentage text
+                        y_pos += 30
+                        cv2.putText(panel, f"Progress: {progress*100:.1f}%", (10, y_pos), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+                        
+                        # Add frame info at bottom
+                        y_pos = frame_height - 30
+                        cv2.putText(panel, f"Frame: {frame_index}", (10, y_pos), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+                        
+                        return panel
+                        
+                    # Function to estimate time signature (similar to overtime_graph)
+                    def update_time_signature():
+                        """Update time signature based on collected y-coordinates"""
+                        try:
+                            if len(y_coords) < 30:  # Need enough data
+                                return "4/4"
+                                
+                            # Use find_peaks from scipy.signal to detect peaks and valleys
+                            from scipy.signal import find_peaks
+                            import numpy as np
                             
-                            # Set video to start frame
-                            cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+                            # Normalize data
+                            y_array = np.array(y_coords)
+                            y_min, y_max = min(y_array), max(y_array)
                             
-                            # Print crop info just once, not for every frame
+                            if y_max == y_min:  # Avoid division by zero
+                                return "4/4"
+                                
+                            y_normalized = (y_array - y_min) / (y_max - y_min)
+                            
+                            # Set parameters for peak detection
+                            prominence = 0.1  # Similar to overtime_graph
+                            distance = 5
+                            
+                            # Find peaks and valleys (inverted for peaks)
+                            peaks, _ = find_peaks(-y_normalized, prominence=prominence, distance=distance)
+                            valleys, _ = find_peaks(y_normalized, prominence=prominence, distance=distance)
+                            
+                            if len(peaks) < 4:  # Need at least a few peaks
+                                return "4/4"
+                                
+                            # Count peaks and determine pattern
+                            peak_heights = [-y_normalized[i] for i in peaks]
+                            
+                            # Apply logic similar to overtime_graph
+                            if len(peak_heights) > 0:
+                                # Find larger peaks
+                                threshold = np.percentile(peak_heights, 75)
+                                large_peaks = [i for i, h in zip(peaks, peak_heights) if h > threshold]
+                                
+                                if len(large_peaks) >= 2:
+                                    # Count smaller peaks between large peaks
+                                    all_patterns = []
+                                    
+                                    for i in range(1, len(large_peaks)):
+                                        small_count = sum(1 for p in peaks 
+                                                    if large_peaks[i-1] < p < large_peaks[i] 
+                                                    and -y_normalized[p] <= threshold)
+                                        pattern = small_count + 1
+                                        all_patterns.append(pattern)
+                                    
+                                    # Get most common pattern
+                                    if all_patterns:
+                                        from collections import Counter
+                                        counter = Counter(all_patterns)
+                                        most_common = counter.most_common(1)[0][0]
+                                        
+                                        # Map to time signature
+                                        if most_common == 2:
+                                            return "2/4"
+                                        elif most_common == 3:
+                                            return "3/4"
+                                        elif most_common == 4:
+                                            return "4/4"
+                                        elif most_common >= 5:
+                                            return f"{most_common}/8"
+                            
+                            return "4/4"  # Default
+                            
+                        except Exception as e:
+                            print(f"Error in time signature detection: {e}")
+                            return "4/4"  # Default on error
+                    
+                    # Initialize variables for time signature updates
+                    last_time_signature_update = 0
+                    time_signature_update_interval = 30  # Update every 30 frames
+                        
+                    # Process each interval
+                    for interval in self.processing_intervals:
+                        start_frame, end_frame = interval
+                        frame_count = start_frame
+                        
+                        # Set video to start frame
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+                        
+                        # Process frames
+                        while cap.isOpened() and frame_count <= end_frame:
+                            ret, frame = cap.read()
+                            if not ret:
+                                break
+                                
+                            # Apply crop if available
                             crop_rect = self.config.get("crop_rect", None)
                             if crop_rect:
-                                print(f"Using crop rectangle: {crop_rect}")
+                                x, y, w, h = crop_rect
+                                try:
+                                    frame = frame[y:y+h, x:x+w]
+                                except Exception as e:
+                                    print(f"Error applying crop: {e}")
+                                    # Try to continue with full frame if crop fails
+                                    pass
                             
-                            # Debug the filtered beats array to see what's in it
-                            print(f"Filtered beats: {self.filtered_significant_beats}")
-                            print(f"Processing frames: {start_frame} to {end_frame}")
+                            # Process frame with MediaPipe
+                            frame_timestamp_ms = round(cap.get(cv2.CAP_PROP_POS_MSEC))
+                            image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
+                            detection_result = detector.detect_for_video(mp_image, frame_timestamp_ms)
                             
-                            # Process frames
-                            while cap.isOpened() and frame_count <= end_frame:
-                                ret, frame = cap.read()
-                                if not ret:
-                                    break
+                            # Draw landmarks
+                            annotated_image = mediaPipeDeclaration.draw_landmarks_on_image(image_rgb, detection_result)
+                            output_frame = cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR)
+                            
+                            # Calculate relative frame index within segment
+                            relative_frame = frame_count - start_frame
+                            
+                            # For time signature detection, collect y coordinates
+                            try:
+                                # Extract coordinates from detected landmarks
+                                if detection_result.pose_landmarks and len(detection_result.pose_landmarks[0]) > 16:
+                                    y_coord = detection_result.pose_landmarks[0][16].y
+                                    y_coords.append(y_coord)
+                            except Exception as e:
+                                # Ignore errors in time signature detection
+                                pass
+                                
+                            # Update time signature periodically
+                            if frame_count - last_time_signature_update >= time_signature_update_interval and len(y_coords) >= 30:
+                                new_time_sig = update_time_signature()
+                                conducting_metrics["suggested_time_signature"] = new_time_sig
+                                last_time_signature_update = frame_count
+                                
+                                # Update pattern type based on time signature
+                                if new_time_sig == "2/4":
+                                    conducting_metrics["pattern_type"] = "Binary"
+                                    conducting_metrics["pattern_confidence"] = 80
+                                elif new_time_sig == "3/4":
+                                    conducting_metrics["pattern_type"] = "Ternary" 
+                                    conducting_metrics["pattern_confidence"] = 85
+                                elif new_time_sig == "4/4":
+                                    conducting_metrics["pattern_type"] = "Quaternary"
+                                    conducting_metrics["pattern_confidence"] = 90
+                                else:
+                                    conducting_metrics["pattern_type"] = "Compound"
+                                    conducting_metrics["pattern_confidence"] = 75
+                            
+                            # Add frame info
+                            cv2.putText(output_frame, f'Frame: {frame_count}', 
+                                    (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+                            
+                            # Add segment info
+                            cv2.putText(output_frame, f'Segment: {start_frame}-{end_frame}', 
+                                    (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+                            
+                            # Check if this relative frame position has a beat
+                            is_beat_frame = relative_frame in self.filtered_significant_beats
+                            
+                            # Handle beat detection and display
+                            if is_beat_frame:
+                                # Show original BEAT text (preserving original visualization)
+                                cv2.putText(output_frame, "BEAT!", 
+                                        (output_frame.shape[1]//2 - 100, 100), 
+                                        cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 255), 3)
+                                
+                                # Track beat for BPM calculation
+                                beats.append(frame_count)
+                                beat_count += 1
+                                
+                                # Get index of this beat in the filtered beats array
+                                beat_index = self.filtered_significant_beats.index(relative_frame)
+                                
+                                if beat_index > 0:
+                                    # Get previous beat (relative to segment start)
+                                    prev_beat = self.filtered_significant_beats[beat_index - 1]
                                     
-                                # Apply crop if available
-                                if crop_rect:
-                                    x, y, w, h = crop_rect
-                                    try:
-                                        frame = frame[y:y+h, x:x+w]
-                                    except Exception as e:
-                                        print(f"Error applying crop: {e}")
-                                        # Try to continue with full frame if crop fails
-                                        pass
-                                
-                                # Process frame with MediaPipe
-                                frame_timestamp_ms = round(cap.get(cv2.CAP_PROP_POS_MSEC))
-                                image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
-                                detection_result = detector.detect_for_video(mp_image, frame_timestamp_ms)
-                                
-                                # Draw landmarks
-                                annotated_image = mediaPipeDeclaration.draw_landmarks_on_image(image_rgb, detection_result)
-                                annotated_image_bgr = cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR)
-                                
-                                # Calculate relative frame index within segment
-                                relative_frame = frame_count - start_frame
-                                
-                                # Check if this relative frame position has a beat
-                                # The filtered_significant_beats contains indexes that are relative to the segment start
-                                is_beat_frame = relative_frame in self.filtered_significant_beats
-                                
-                                # Calculate BPM if this is a beat frame - use original approach
-                                if is_beat_frame:
-                                    # Get index of this beat in the filtered beats array
-                                    beat_index = self.filtered_significant_beats.index(relative_frame)
+                                    # Calculate time between beats in seconds
+                                    time_diff = (relative_frame - prev_beat) / fps
                                     
-                                    if beat_index > 0:
-                                        # Get previous beat (relative to segment start)
-                                        prev_beat = self.filtered_significant_beats[beat_index - 1]
-                                        
-                                        # Calculate time between beats in seconds
-                                        time_diff = (relative_frame - prev_beat) / self.fps
-                                        
-                                        # Calculate BPM
-                                        if time_diff > 0:
-                                            bpm = 60 / time_diff  # 60 seconds / time between beats
-                                        else:
-                                            bpm = 0
-                                            
-                                        print(f"\nBeats per minute (BPM) at frame {frame_count}: {bpm:.1f}\n")
-                                        
-                                        # Add BPM text
-                                        cv2.putText(annotated_image_bgr, f'BPM: {bpm:.1f}', 
-                                                (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+                                    # Calculate BPM
+                                    if time_diff > 0:
+                                        current_bpm = 60 / time_diff
                                     else:
-                                        # First beat, can't calculate BPM yet
-                                        cv2.putText(annotated_image_bgr, 'First Beat', 
-                                                (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-                                
-                                # Add frame info - always show this
-                                cv2.putText(annotated_image_bgr, f'Frame: {frame_count}', 
-                                        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-                                
-                                # Add segment info
-                                cv2.putText(annotated_image_bgr, f'Segment: {start_frame}-{end_frame}', 
-                                        (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-
-                                # Add beat marker
-                                if is_beat_frame:
-                                    # Draw a red circle to indicate beat
-                                    cv2.circle(annotated_image_bgr, (30, 70), 10, (0, 0, 255), -1)
+                                        current_bpm = 0
+                                        
+                                    print(f"\nBeats per minute (BPM) at frame {frame_count}: {current_bpm:.1f}\n")
                                     
-                                    # Add beat text
-                                    cv2.putText(annotated_image_bgr, "BEAT", 
-                                            (45, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+                                    # Update metrics
+                                    conducting_metrics["current_bpm"] = current_bpm
+                                    conducting_metrics["beat_count"] = beat_count
+                                    
+                                    # Save BPM data to file
+                                    bpm_info = f'Beats per minute (BPM) at frame {frame_count}: {current_bpm:.1f}\n'
+                                    bpm_file = os.path.join(export_path, video_bpm_output_name())
+                                    with open(bpm_file, 'a') as file:
+                                        file.write(bpm_info)
+                            
+                            # Always show current BPM (consistent display)
+                            cv2.putText(output_frame, f'BPM: {conducting_metrics["current_bpm"]:.1f}', 
+                                    (output_frame.shape[1]//2 - 80, 150), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+                            
+                            # Update sway index from detector
+                            if hasattr(self.swaying_detector, 'swayingIndex'):
+                                conducting_metrics["sway_index"] = self.swaying_detector.swayingIndex
                                 
-                                # Write the frame
-                                analyzed_out.write(annotated_image_bgr)
-                                
-                                # Increment frame counter
-                                frame_count += 1
-                                
-                                # Print progress occasionally
-                                if frame_count % 100 == 0:
-                                    progress = ((frame_count - start_frame) / (end_frame - start_frame + 1)) * 100
-                                    print(f"Processing: {progress:.1f}% complete", end='\r')
-                    try:
-                        simplified_output_process_video()
-                    except Exception as e:
-                        print(f"Error in video processing: {e}")
-                        print("Attempting to continue anyway...")
-                        traceback.print_exc()
+                            # Let swaying detector add any visual indicators
+                            self.swaying_detector.swaying_print(frame_count, output_frame)
+                            
+                            # Create side panel
+                            side_panel = create_side_panel(
+                                conducting_metrics, 
+                                frame_height=output_frame.shape[0], 
+                                panel_width=panel_width, 
+                                frame_index=frame_count, 
+                                segment_info=(start_frame, end_frame)
+                            )
+                            
+                            # Combine frame and side panel
+                            combined_frame = np.zeros((output_height, output_width, 3), dtype=np.uint8)
+                            combined_frame[:, :frame_width] = output_frame
+                            combined_frame[:, frame_width:] = side_panel
+                            
+                            # Write the combined frame
+                            analyzed_out.write(combined_frame)
+                            
+                            # Increment frame counter
+                            frame_count += 1
+                            
+                            # Print progress occasionally
+                            if frame_count % 100 == 0:
+                                progress = ((frame_count - start_frame) / (end_frame - start_frame + 1)) * 100
+                                print(f"Processing: {progress:.1f}% complete", end='\r')
                     
                     # Release resources
-                    analyzed_out.release()
                     cap.release()
-                    print(f"Analyzed video saved to: {analyzed_output_file}")
-            
+                    analyzed_out.release()
+                    print(f"\nAnalyzed video with side panel saved to: {analyzed_output_file}")
             # Create and run the segment processor
             segment_processor = SegmentCycleProcessor(segment_config)
             
@@ -660,9 +851,6 @@ class CycleOne:
         if crop_data:
             self.frame_width = crop_data[2]
             self.frame_height = crop_data[3]
-        
-        output_file = os.path.join(export_path, video_beat_plot_name() + '.mp4')
-        self.out = cv2.VideoWriter(output_file, cv2.VideoWriter_fourcc(*'mp4v'), self.fps, (self.frame_width, self.frame_height))
 
         # Add debugging info after video capture initialization
         print("\n=== Cycle One Debug Information ===")
@@ -677,7 +865,7 @@ class CycleOne:
         print("================================\n")
 
         # process video and detect beats
-        process_video(self.cap, self.out, self.detector, self.frame_array, self.processed_frame_array, 
+        process_video(self.cap, self.detector, self.frame_array, self.processed_frame_array, 
                      self.processing_intervals, self.swaying_detector, self.mirror_detector)
         
         # analyze detected movements for beats
@@ -726,53 +914,33 @@ class CycleTwo:
             self.frame_height = h
             print(f"Using crop dimensions: {self.frame_width}x{self.frame_height}")
             
-        output_file = os.path.join(export_path, video_out_name() + '.mp4')
-        
-        # Create VideoWriter with the cropped dimensions
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        self.out = cv2.VideoWriter(output_file, fourcc, self.fps, 
-                                  (self.frame_width, self.frame_height))
-        
-        # Verify the writer is opened successfully
-        if not self.out.isOpened():
-            print("Error: Failed to open video writer")
-            # Try alternative codec
-            fourcc = cv2.VideoWriter_fourcc(*'XVID')
-            self.out = cv2.VideoWriter(output_file, fourcc, self.fps, 
-                                     (self.frame_width, self.frame_height))
-            if not self.out.isOpened():
-                print("Error: Failed to open video writer with alternative codec")
-                return
-            
         # Add debugging info
         print("\n=== Cycle Two Initialization ===")
         print(f"Video File: {self.videoFileName}")
         print(f"Frame Width: {self.frame_width}")
         print(f"Frame Height: {self.frame_height}")
         print(f"FPS: {self.fps}")
-        print(f"Output File: {output_file}")
-        print(f"VideoWriter opened: {self.out.isOpened()}")
         print("================================\n")
 
-        # Process video with detected beats
-        output_process_video(self.cap, self.out, self.detector, 
-                           cycle_one_instance.filtered_significant_beats,
-                           cycle_one_instance.processing_intervals, 
-                           self.swaying_detector)
-        
-        # Detect patterns and write to files
+                # Detect patterns and write to files
         patterns = self.pattern_detector.pattern_detection(cycle_one_instance.beat_coordinates)
         pattern_file = os.path.join(export_path, os.path.basename(self.videoFileName) + "_video_pattern.txt")
         with open(pattern_file, "w") as f:
             for pattern in patterns:
                 f.write(pattern + "\n")
         
+        # Process video with detected beats
+        output_process_video(self.cap, self.detector, 
+                           cycle_one_instance.filtered_significant_beats,
+                           cycle_one_instance.processing_intervals, 
+                           self.swaying_detector)
+        
+        
         graph_options = config.get("processing_options", {}).get("graph_options", None)
         # Generate analysis graphs
         generate_all_graphs(cycle_one_instance, graph_options)
         
         # Make sure to release resources
-        self.out.release()
         self.cap.release()
         cv2.destroyAllWindows()
 
@@ -804,10 +972,6 @@ def process_with_visualization(video_path, start_frame, end_frame, crop_rect, op
     crop_y = max(0, min(height - 10, crop_y))
     crop_w = max(10, min(width - crop_x, crop_w))
     crop_h = max(10, min(height - crop_y, crop_h))
-    
-    # Initialize variables for motion detection
-    motion_history = []
-    position_tracking = []
     
     # Background subtractor
     bg_subtractor = cv2.createBackgroundSubtractorMOG2(history=100, varThreshold=50, detectShadows=True)
