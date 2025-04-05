@@ -546,7 +546,8 @@ def draw_menu():
         hover=pygame.Rect(window_size[0] - 200, window_size[1] - 60, 150, 40).collidepoint(pygame.mouse.get_pos())
     )
     
-    return checkboxes, close_btn
+    # Return a dictionary containing both checkboxes and close button
+    return {'checkboxes': checkboxes, 'close_btn': close_btn}
 
 def draw_recording_interface():
     """Draw recording interface"""
@@ -1190,8 +1191,9 @@ def main():
             
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if show_menu:
+                    menu_checkboxes = menu_elements.get('checkboxes', {})
                     # Handle menu interactions
-                    for option, rect in menu_elements.get('checkboxes', {}).items():
+                    for option, rect in menu_checkboxes.items():
                         if rect.collidepoint(mouse_pos):
                             processing_options[option] = not processing_options[option]
                     
