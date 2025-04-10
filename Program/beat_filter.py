@@ -45,11 +45,7 @@ def filter_beats(frame_array, processed_frame_array):
     # combine all detected beats and filter by threshold
     filtered_significant_beats = list(y_peaks)
     # Get the x,y coordinates for each beat
-    beat_coord_list= list(y_valleys)
-    beat_coordinates = [(x[i], y[i]) for i in beat_coord_list]
-
-    # Debugging output to verify structure
-    print("Beat Coordinates:", beat_coordinates)
+    beat_coordinates = [(x[i], y[i]) for i in filtered_significant_beats]
 
     # Before return, add debug info
     print(f"Number of y peaks: {len(y_peaks)}")

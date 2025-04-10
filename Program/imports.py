@@ -24,7 +24,6 @@ import sys
 #PyGame
 import pygame
 from numpy import mean
-from sklearn.cluster import KMeans # type: ignore 
 import subprocess
 
 # Mediapipe imports
@@ -32,8 +31,6 @@ import mediapipe as mp
 from mediapipe.framework.formats import landmark_pb2
 
 # Local imports
-from cueing import *
-from cueing import cueingDetection
 from names import *
 from pattern import *
 from mp_declaration import mediaPipeDeclaration
@@ -42,8 +39,6 @@ from p_stage2 import output_process_video
 from beat_filter import filter_beats
 from sway import swayingDetection
 from mirror import mirrorDetection
-from elbow import *
-from start_end import *
 from graphs import *
 from interface import *
 from sanrio_interface import *

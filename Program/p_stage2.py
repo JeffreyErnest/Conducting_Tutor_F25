@@ -136,13 +136,18 @@ def print_beats(frame_index, output_frame, filtered_significant_beats, beats, fp
     return text_display_counter
 
 # processes video for second pass, displaying beats and generating analysis
-def output_process_video(cap, out, detector, filtered_significant_beats, processing_intervals, 
-                        swaying_detector, mirror_detector, cueing_detector, elbow_detector):
+# Simplified replacement for output_process_video in p_stage2.py
+def output_process_video(cap, detector, filtered_significant_beats, processing_intervals, swaying_detector):
+    """
+    Process video for second pass, displaying beats and generating analysis with side panel
+    - Uses the passed detector to avoid timestamp errors
+    - Fixes export directory issues
+    - Adds time signature estimation
+    """
     # Ensure pygame is initialized
     if not pygame.get_init():
         pygame.init()
         
-    # Add debug information at start
     print("\n=== Cycle Two Debug Information ===")
     fps = int(cap.get(cv2.CAP_PROP_FPS))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -152,7 +157,7 @@ def output_process_video(cap, out, detector, filtered_significant_beats, process
     print(f"Number of beats to display: {len(filtered_significant_beats)}")
     print(f"Processing intervals: {processing_intervals}")
     print("================================\n")
-
+    
     # Initialize parameters
     try:
         font = pygame.font.Font(None, 50)
@@ -165,9 +170,9 @@ def output_process_video(cap, out, detector, filtered_significant_beats, process
         
     bpm_window = 5
     beats = []
-    text_display_counter = 0
-    frame_index = 0
+    current_bpm = 0
     beat_count = 0
+    frame_index = 0
     
     # Get the original video dimensions
     video_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -227,10 +232,6 @@ def output_process_video(cap, out, detector, filtered_significant_beats, process
     
     # Store y-coordinates for time signature estimation
     y_coords = []
-    
-    # Initialize variables for time signature updates
-    last_time_signature_update = 0
-    time_signature_update_interval = 30  # Update every 30 frames
     
     # Function to create side panel
     def create_side_panel(metrics, frame_height, panel_width, frame_index, segment_info):
@@ -297,7 +298,7 @@ def output_process_video(cap, out, detector, filtered_significant_beats, process
         
         return panel
     
-    # Function to estimate time signature
+    # Function to estimate time signature (similar to overtime_graph)
     def update_time_signature():
         """Update time signature based on collected y-coordinates"""
         try:
@@ -318,7 +319,7 @@ def output_process_video(cap, out, detector, filtered_significant_beats, process
             y_normalized = (y_array - y_min) / (y_max - y_min)
             
             # Set parameters for peak detection
-            prominence = 0.1
+            prominence = 0.1  # Similar to overtime_graph
             distance = 5
             
             # Find peaks and valleys (inverted for peaks)
@@ -331,7 +332,7 @@ def output_process_video(cap, out, detector, filtered_significant_beats, process
             # Count peaks and determine pattern
             peak_heights = [-y_normalized[i] for i in peaks]
             
-            # Apply logic for pattern detection
+            # Apply logic similar to overtime_graph
             if len(peak_heights) > 0:
                 # Find larger peaks
                 threshold = np.percentile(peak_heights, 75)
@@ -370,6 +371,10 @@ def output_process_video(cap, out, detector, filtered_significant_beats, process
             print(f"Error in time signature detection: {e}")
             return "4/4"  # Default on error
     
+    # Initialize variables for time signature updates
+    last_time_signature_update = 0
+    time_signature_update_interval = 30  # Update every 30 frames
+    
     # Main processing loop
     while cap.isOpened():
         success, image = cap.read()
@@ -390,8 +395,9 @@ def output_process_video(cap, out, detector, filtered_significant_beats, process
                 image = image[y:y+h, x:x+w]
             else:
                 print("Warning: Invalid crop dimensions, using full frame")
-
-        # Process the frame with MediaPipe
+        
+        # Process the frame with MediaPipe - use the process_frame function
+        # which utilizes the passed detector
         annotated_image_bgr = process_frame(cap, detector, image)
         
         # Skip if the frame couldn't be processed
@@ -410,17 +416,20 @@ def output_process_video(cap, out, detector, filtered_significant_beats, process
         
         # Process the frame if it's within the intervals
         if is_within_intervals(frame_index, processing_intervals):
-            # Call print_beats from JE branch
-            text_display_counter = print_beats(frame_index, annotated_image_bgr, filtered_significant_beats, beats, fps, bpm_window, text_display_counter)
-            
-            # Calculate relative frame index from LB branch
+            # Calculate relative frame index
             relative_frame = frame_index - current_interval[0]
             
-            # For time signature detection from LB branch
+            # For time signature detection, we need to track hand movements
+            # We'll do this by collecting coordinates from the processed frames
             try:
                 # Extract coordinates from the existing frame_array
                 if relative_frame in filtered_significant_beats:
                     # Since these are beat frames, likely to have good landmark detection
+                    # We'll find corresponding y-coordinate from detected landmarks
+                    
+                    # This is where we'd normally get coordinates from MediaPipe
+                    # But we'll use a simpler approach to avoid duplicate detection
+                    # We'll use the y-coordinate from swaying detector if available
                     if hasattr(swaying_detector, 'last_right_hand_y'):
                         y_coords.append(swaying_detector.last_right_hand_y)
                     elif hasattr(swaying_detector, 'midpoint'):
@@ -430,7 +439,7 @@ def output_process_video(cap, out, detector, filtered_significant_beats, process
                 # Ignore errors in time signature detection
                 pass
                 
-            # Update time signature periodically from LB branch
+            # Update time signature periodically
             if frame_index - last_time_signature_update >= time_signature_update_interval and len(y_coords) >= 30:
                 new_time_sig = update_time_signature()
                 conducting_metrics["suggested_time_signature"] = new_time_sig
@@ -447,9 +456,9 @@ def output_process_video(cap, out, detector, filtered_significant_beats, process
                     conducting_metrics["pattern_type"] = "Compound"
                     conducting_metrics["pattern_confidence"] = 75
             
-            # Check if this is a beat frame from LB branch
+            # Check if this is a beat frame
             if relative_frame in filtered_significant_beats:
-                # Display beat text
+                # Keep the original BEAT text as requested
                 text = "BEAT!"
                 cv2.putText(output_frame, text, 
                            (output_frame.shape[1]//2 - 100, 100), 
@@ -473,44 +482,23 @@ def output_process_video(cap, out, detector, filtered_significant_beats, process
                 with open(output_file, 'a') as file:
                     file.write(bpm_info)
             
-            # Display "Processing" from JE branch
-            cv2.putText(annotated_image_bgr, "Processing", (350, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
-            
-            # Always display current BPM from LB branch
+            # Always display current BPM in a consistent location (not flashing)
             bpm_text = f"BPM: {conducting_metrics['current_bpm']:.1f}"
             cv2.putText(output_frame, bpm_text, 
                        (output_frame.shape[1]//2 - 80, 150), 
                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
             
-        # Get the midpoint from swaying detector from JE branch
-        midpoint_x = swaying_detector.default_midpoint_x
+            # Let swaying detector add its visualization
+            try:
+                swaying_detector.swaying_print(frame_index, output_frame)
+            except Exception as e:
+                print(f"Warning: Error in swaying detection: {e}")
+            
+            # Update sway index for side panel
+            if hasattr(swaying_detector, 'swayingIndex'):
+                conducting_metrics["sway_index"] = swaying_detector.swayingIndex
         
-        # Print mirroring on the annotated image from JE branch
-        mirror_detector.print_mirroring(frame_index, annotated_image_bgr, midpoint_x)
-        
-        # Print swaying to annotated video - use the version from LB branch that includes error handling
-        try:
-            swaying_detector.swaying_print(frame_index, output_frame)
-        except Exception as e:
-            print(f"Warning: Error in swaying detection: {e}")
-        
-        # Update sway index for side panel from LB branch
-        if hasattr(swaying_detector, 'swayingIndex'):
-            conducting_metrics["sway_index"] = swaying_detector.swayingIndex
-
-        # Print elbow to far out to video from JE branch
-        elbow_detector.elbow_print(frame_index, annotated_image_bgr)
-
-        # Get the Y-coordinates of the hands for cueing from JE branch
-        left_hand_y = mirror_detector.left_hand_y[frame_index] if frame_index < len(mirror_detector.left_hand_y) else 0
-        
-        # Call print_cueing from JE branch
-        cueing_detector.print_cueing(annotated_image_bgr, mirror_detector, left_hand_y)
-
-        # Display frame number from JE branch
-        cv2.putText(annotated_image_bgr, f'Frame: {frame_index}', (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
-        
-        # Create side panel with current metrics from LB branch
+        # Create side panel with current metrics
         side_panel = create_side_panel(
             conducting_metrics, 
             output_frame.shape[0], 
@@ -519,36 +507,36 @@ def output_process_video(cap, out, detector, filtered_significant_beats, process
             current_interval
         )
         
-        # Combine frame and side panel from LB branch
+        # Combine frame and side panel
         combined_frame = np.zeros((output_height, output_width, 3), dtype=np.uint8)
         combined_frame[:, :video_width] = output_frame
         combined_frame[:, video_width:] = side_panel
                 
-        # Write the combined frame to output from LB branch
+        # Write the combined frame to output
         if panel_out.isOpened():
             panel_out.write(combined_frame)
         else:
             print(f"Warning: Could not write frame {frame_index} to output video")
-            
-        # Display and write the original annotated frame from JE branch
-        cv2.imshow('Annotated Frames', annotated_image_bgr)
-        out.write(annotated_image_bgr)
-
+        
         # Check for escape key
         key = cv2.waitKey(5) & 0xFF
         if key == 27:
             break
             
         frame_index += 1
-
+    
     # cleanup
     print(f"Processed {frame_index} frames")
     print(f"Output video saved to: {output_filename}")
     
+    # Close video resources
     cap.release()
-    out.release()
     if panel_out.isOpened():
         panel_out.release()
-    cv2.destroyAllWindows()
+        
+    # Don't quit pygame here, as it might be needed by other modules
+    # pygame.quit()
     
+    # Close all OpenCV windows
+    cv2.destroyAllWindows()
     return
