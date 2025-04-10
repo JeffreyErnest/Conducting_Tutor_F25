@@ -15,6 +15,7 @@ import subprocess
 
 # Import interface module
 from interface import run_interface
+from sanrio_interface import run_sanrio_interface
 
 # Try to import conducting-specific modules, but don't fail if they're not available
 try:
@@ -1117,8 +1118,18 @@ def main():
     """Main application entry point"""
     print("=== Movement Detection and Conducting Analysis Application ===")
     
+    # Check if we should use the Sanrio theme
+    use_sanrio_mode = "--sanrio-mode" in sys.argv
+    
     # Run interface to get user input
-    if run_interface():
+    interface_result = False
+    if use_sanrio_mode:
+        from sanrio_interface import run_sanrio_interface
+        interface_result = run_sanrio_interface()
+    else:
+        interface_result = run_interface()
+    
+    if interface_result:
         # Load configuration from interface
         config = load_config()
         

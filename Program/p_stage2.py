@@ -1,6 +1,11 @@
 from imports import *
 from names import video_out_name
 from interface import display_frame, get_screen, get_window_size
+import pygame
+
+# Make sure pygame is initialized
+if not pygame.get_init():
+    pygame.init()
 
 # processes a single frame and returns the annotated image
 def process_frame(cap, detector, image):
@@ -51,14 +56,28 @@ def calculate_bpm(current_frame, beats, fps, window_duration):
 
 # displays beat indicator and records bpm data
 def print_beats(frame_index, output_frame, filtered_significant_beats, beats, fps, bpm_window, text_display_counter):
-    window_size = get_window_size()
-    screen = get_screen()
+    # Ensure pygame is initialized
+    if not pygame.get_init():
+        pygame.init()
+        
+    try:
+        window_size = get_window_size()
+        screen = get_screen()
 
-    # For pygame display (keep this for the UI)
-    font = pygame.font.Font(None, 50)
-    text = font.render("Beat!", True, (255, 255, 255))
-    text_x = (window_size[0] - text.get_width()) // 2
-    text_y = (window_size[1] - text.get_height()) // 2
+        # For pygame display (keep this for the UI)
+        font = pygame.font.Font(None, 50)
+        text = font.render("Beat!", True, (255, 255, 255))
+        text_x = (window_size[0] - text.get_width()) // 2
+        text_y = (window_size[1] - text.get_height()) // 2
+    except Exception as e:
+        print(f"Warning: pygame UI elements could not be initialized: {e}")
+        # Continue without pygame display elements
+        window_size = None
+        screen = None
+        font = None
+        text = None
+        text_x = 0
+        text_y = 0
 
     # For video output - make sure to position text within the visible area
     font_out = cv2.FONT_HERSHEY_SIMPLEX
@@ -73,8 +92,12 @@ def print_beats(frame_index, output_frame, filtered_significant_beats, beats, fp
     text_y_out = 100  # Fixed position near the top where it's visible
 
     if frame_index in filtered_significant_beats:
-        # Show on pygame display
-        screen.blit(text, (text_x, text_y))
+        # Show on pygame display if available
+        if screen is not None and font is not None:
+            try:
+                screen.blit(text, (text_x, text_y))
+            except Exception as e:
+                print(f"Warning: Could not display on pygame screen: {e}")
         
         # Write to output frame for video
         cv2.putText(output_frame, text_out, (text_x_out, text_y_out), 
@@ -98,8 +121,12 @@ def print_beats(frame_index, output_frame, filtered_significant_beats, beats, fp
         # Duration of text display
         text_display_counter = 3
     elif text_display_counter > 0:
-        # Show on pygame display
-        screen.blit(text, (text_x, text_y))
+        # Show on pygame display if available
+        if screen is not None and font is not None:
+            try:
+                screen.blit(text, (text_x, text_y))
+            except Exception as e:
+                print(f"Warning: Could not display on pygame screen: {e}")
         
         # Write to output frame for video
         cv2.putText(output_frame, text_out, (text_x_out, text_y_out), 
@@ -117,6 +144,10 @@ def output_process_video(cap, detector, filtered_significant_beats, processing_i
     - Fixes export directory issues
     - Adds time signature estimation
     """
+    # Ensure pygame is initialized
+    if not pygame.get_init():
+        pygame.init()
+        
     print("\n=== Cycle Two Debug Information ===")
     fps = int(cap.get(cv2.CAP_PROP_FPS))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -128,8 +159,15 @@ def output_process_video(cap, detector, filtered_significant_beats, processing_i
     print("================================\n")
     
     # Initialize parameters
-    font = pygame.font.Font(None, 50)
-    screen = get_screen()
+    try:
+        font = pygame.font.Font(None, 50)
+        screen = get_screen()
+    except Exception as e:
+        print(f"Warning: pygame font initialization failed: {e}")
+        # Continue without pygame-specific elements
+        font = None
+        screen = None
+        
     bpm_window = 5
     beats = []
     current_bpm = 0
@@ -365,10 +403,7 @@ def output_process_video(cap, detector, filtered_significant_beats, processing_i
         # Skip if the frame couldn't be processed
         if annotated_image_bgr is None:
             continue
-            
-        # Display the frame in PyGame window
-        display_frame(annotated_image_bgr)
-        
+       
         # Create a copy of the frame for adding text and graphics
         output_frame = annotated_image_bgr.copy()
         
@@ -412,13 +447,10 @@ def output_process_video(cap, detector, filtered_significant_beats, processing_i
                 
                 # Update pattern type based on time signature
                 if new_time_sig == "2/4":
-                    conducting_metrics["pattern_type"] = "Binary"
                     conducting_metrics["pattern_confidence"] = 80
                 elif new_time_sig == "3/4":
-                    conducting_metrics["pattern_type"] = "Ternary" 
                     conducting_metrics["pattern_confidence"] = 85
                 elif new_time_sig == "4/4":
-                    conducting_metrics["pattern_type"] = "Quaternary"
                     conducting_metrics["pattern_confidence"] = 90
                 else:
                     conducting_metrics["pattern_type"] = "Compound"
@@ -431,14 +463,7 @@ def output_process_video(cap, detector, filtered_significant_beats, processing_i
                 cv2.putText(output_frame, text, 
                            (output_frame.shape[1]//2 - 100, 100), 
                            cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 255), 3)
-                
-                # Also show beat on pygame screen
-                text_pygame = font.render("Beat!", True, (255, 255, 255))
-                window_size = get_window_size()
-                text_x = (window_size[0] - text_pygame.get_width()) // 2
-                text_y = (window_size[1] - text_pygame.get_height()) // 2
-                screen.blit(text_pygame, (text_x, text_y))
-                
+                               
                 # Track beat for BPM calculation
                 beats.append(frame_index)
                 beat_count += 1
@@ -464,7 +489,10 @@ def output_process_video(cap, detector, filtered_significant_beats, processing_i
                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
             
             # Let swaying detector add its visualization
-            swaying_detector.swaying_print(frame_index, output_frame)
+            try:
+                swaying_detector.swaying_print(frame_index, output_frame)
+            except Exception as e:
+                print(f"Warning: Error in swaying detection: {e}")
             
             # Update sway index for side panel
             if hasattr(swaying_detector, 'swayingIndex'):
@@ -483,12 +511,7 @@ def output_process_video(cap, detector, filtered_significant_beats, processing_i
         combined_frame = np.zeros((output_height, output_width, 3), dtype=np.uint8)
         combined_frame[:, :video_width] = output_frame
         combined_frame[:, video_width:] = side_panel
-        
-        # Update PyGame display
-        pygame.display.update()
-        pygame.event.pump()
-        pygame.time.delay(10)
-        
+                
         # Write the combined frame to output
         if panel_out.isOpened():
             panel_out.write(combined_frame)
@@ -505,9 +528,15 @@ def output_process_video(cap, detector, filtered_significant_beats, processing_i
     # cleanup
     print(f"Processed {frame_index} frames")
     print(f"Output video saved to: {output_filename}")
+    
+    # Close video resources
     cap.release()
     if panel_out.isOpened():
         panel_out.release()
-    pygame.quit()
+        
+    # Don't quit pygame here, as it might be needed by other modules
+    # pygame.quit()
+    
+    # Close all OpenCV windows
     cv2.destroyAllWindows()
     return

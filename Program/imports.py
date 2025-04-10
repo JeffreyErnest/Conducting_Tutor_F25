@@ -41,3 +41,4 @@ from sway import swayingDetection
 from mirror import mirrorDetection
 from graphs import *
 from interface import *
+from sanrio_interface import *
