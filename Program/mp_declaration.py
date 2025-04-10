@@ -10,7 +10,7 @@ class mediaPipeDeclaration:
     @staticmethod
     def get_pose_landmarker():
         options = mediaPipeDeclaration.PoseLandmarkerOptions(
-                  base_options=mediaPipeDeclaration.BaseOptions(model_asset_path='pose_landmarker_full.task'),
+                  base_options=mediaPipeDeclaration.BaseOptions(model_asset_path='Pose_Landmarks/pose_landmarker_full.task'),
                   running_mode=mediaPipeDeclaration.VisionRunningMode.VIDEO
                 )
         return mediaPipeDeclaration.PoseLandmarker.create_from_options(options)

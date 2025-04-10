@@ -838,6 +838,9 @@ class CycleOne:
         # initialize movement detectors
         self.swaying_detector = swayingDetection()
         self.mirror_detector = mirrorDetection()
+        self.cueing_detector = cueingDetection() 
+        self.elbow_detector = elbowDetection()
+        self.start_end_detector = startEndDetection()
 
         # setup video writer
         export_path = config["export_path"]
@@ -866,8 +869,7 @@ class CycleOne:
         print("================================\n")
 
         # process video and detect beats
-        process_video(self.cap, self.detector, self.frame_array, self.processed_frame_array, 
-                     self.processing_intervals, self.swaying_detector, self.mirror_detector)
+        process_video(self.cap, self.out, self.detector, self.frame_array, self.processed_frame_array, self.processing_intervals, self.swaying_detector, self.mirror_detector, self.elbow_detector, self.start_end_detector)
         
         # analyze detected movements for beats
         (self.filtered_significant_beats, self.beat_coordinates, self.y_peaks, self.y_valleys, self.y, self.x) = filter_beats(self.frame_array, self.processed_frame_array)
@@ -896,16 +898,24 @@ class CycleTwo:
         # reuse swaying detector from cycle one
         self.swaying_detector = cycle_one_instance.swaying_detector
         self.mirror_detector = cycle_one_instance.mirror_detector
+        self.cueing_detector = cycle_one_instance.cueing_detector
+        self.elbow_detector = cycle_one_instance.elbow_detector
         self.pattern_detector = patternDetection()
         
         # setup video writer
+        self.frame_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self.frame_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        self.fps = int(self.cap.get(cv2.CAP_PROP_FPS))    
+        self.out = cv2.VideoWriter(video_out_name() + '.mp4', cv2.VideoWriter_fourcc(*'mp4v'), self.fps, (self.frame_width, self.frame_height))
+
+        # process video with detected beats
+        self.processing_intervals = cycle_one_instance.processing_intervals
+        output_process_video(self.cap, self.out, self.detector, cycle_one_instance.filtered_significant_beats, 
+                            self.processing_intervals, self.swaying_detector, self.mirror_detector, 
+                            self.cueing_detector, self.elbow_detector)
+
         export_path = config["export_path"]
         os.makedirs(export_path, exist_ok=True)
-        
-        # Get the frame dimensions from config
-        self.frame_width = 268  # Default to cropped width from logs
-        self.frame_height = 496  # Default to cropped height from logs
-        self.fps = int(self.cap.get(cv2.CAP_PROP_FPS))
         
         # Get crop settings if available to confirm dimensions
         crop_data = config.get("crop_rect", None)
