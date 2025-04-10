@@ -1,4 +1,10 @@
 from imports import *
+import os
+import json
+import cv2
+import numpy as np
+import pygame
+import mediapipe as mp
 
 # processes a single frame and returns the annotated image and detection results
 def process_frame(cap, detector, image):
@@ -66,35 +72,6 @@ def process_landmarks(detection_result, frame_array, processed_frame_array, proc
 
     return processing_active
 
-# handles keyboard input for starting/stopping processing and exiting
-def handle_user_input(key, frame_number, processing_active, current_start_frame, swaying_detector, processing_intervals, start_end_detector):
-    # start processing on 's' key
-    if key == ord('s') and not processing_active:
-        processing_active = True
-        current_start_frame = frame_number
-        swaying_detector.set_midpoint_flag_true()
-        swaying_detector.set_midpoint()  # Set the initial midpoint when processing starts
-        # print(f"Started processing at frame: {frame_number}")
-
-    # end processing on 'e' key
-    elif key == ord('e') and processing_active:
-        processing_active = False
-        if current_start_frame is not None:  # Ensure start frame is set
-            processing_intervals.append((current_start_frame, frame_number))
-        swaying_detector.set_midpoint_flag_false()
-        # print(f"Ended processing at frame: {frame_number}")
-
-    # exit on ESC key
-    elif key == 27:
-        if processing_active:
-            processing_intervals.append((current_start_frame, frame_number))
-            # print(f"Ended processing at frame: {frame_number}")
-        return None, None
-
-    # Update start_end_detector state
-    start_end_detector.processing_active = processing_active
-
-    return processing_active, current_start_frame
 
 # main video processing loop
 def process_video(cap, out, detector, frame_array, processed_frame_array, processing_intervals, swaying_detector, mirror_detector, elbow_detector, start_end_detector):
@@ -104,12 +81,27 @@ def process_video(cap, out, detector, frame_array, processed_frame_array, proces
     print(f"Starting video processing...")
     print(f"Expected total frames: {total_frames}")
     print(f"Video FPS: {fps}")
+    print(f"Processing intervals: {processing_intervals}")
     
-    # initialize processing variables
+    # initialize frame counter
     frame_number = 0
     frames_read = 0
-    processing_active = False
-    current_start_frame = None
+
+    # Check if we need to apply cropping
+    crop_rect = None
+    try:
+        with open("interface_config.json", "r") as f:
+            config = json.load(f)
+            crop_data = config.get("crop_rect", None)
+            if crop_data:
+                crop_rect = tuple(crop_data)  # [x, y, width, height]
+                print(f"Applying crop: {crop_rect}")
+    except:
+        print("No cropping configuration found.")
+
+    # Track if we're inside a processing interval
+    was_processing = False
+    is_processing = False
 
     while cap.isOpened():
         success, image = cap.read()
@@ -117,48 +109,61 @@ def process_video(cap, out, detector, frame_array, processed_frame_array, proces
         
         if not success:
             print(f"\nTotal frames read: {frames_read}")
-            if processing_active and current_start_frame is not None:
-                processing_intervals.append((current_start_frame, frame_number - 1))
-                print(f"Ended processing at frame: {frame_number - 1}")
             break
 
         # verify frame is valid
         if image is None:
             continue
+            
+        # Apply cropping if specified
+        if crop_rect:
+            x, y, w, h = crop_rect
+            # Ensure crop dimensions are within image bounds
+            height, width = image.shape[:2]
+            x = max(0, min(x, width-1))
+            y = max(0, min(y, height-1))
+            w = min(w, width-x)
+            h = min(h, height-y)
+            
+            if w > 0 and h > 0:
+                image = image[y:y+h, x:x+w]
+            else:
+                print("Warning: Invalid crop dimensions, using full frame")
 
-        # process current frame
+        # Determine if this frame is in a processing interval
+        was_processing = is_processing  # Save previous state
+        is_processing = False
+        
+        for start, end in processing_intervals:
+            if start <= frame_number <= end:
+                is_processing = True
+                break
+        
+        # Handle state changes
+        if is_processing and not was_processing:
+            # Start of processing interval
+            swaying_detector.set_midpoint_flag_true()
+            swaying_detector.set_midpoint()
+            print(f"Started processing at frame: {frame_number}")
+            
+        elif was_processing and not is_processing:
+            # End of processing interval
+            swaying_detector.set_midpoint_flag_false()
+            print(f"Ended processing at frame: {frame_number}")
+        
+        # process current frame with MediaPipe
         annotated_image_bgr, detection_result = process_frame(cap, detector, image)
-
+        
         if annotated_image_bgr is not None:
-            # display and process frame
-            cv2.imshow('Video Feed - Selection Mode', annotated_image_bgr)
-            processing_active = process_landmarks(detection_result, frame_array, processed_frame_array, 
+            process_landmarks(detection_result, frame_array, processed_frame_array, 
                                                   processing_active, swaying_detector, mirror_detector, 
                                                   elbow_detector, start_end_detector, frame_number, processing_intervals)
 
             # Update processing status in the command line
-            print(f"\rFrame: {frame_number} | Processing: {'Active' if processing_active else 'Inactive'}", end='')
-
-            # add frame number and save frame
-            cv2.putText(annotated_image_bgr, f'Frame: {frame_number}', (10, 50), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
-            out.write(annotated_image_bgr)
-
-        # handle user input
-        key = cv2.waitKey(5) & 0xFF
-        processing_active, current_start_frame = handle_user_input(
-            key, frame_number, processing_active, current_start_frame, 
-            swaying_detector, processing_intervals, start_end_detector)
-
-        # exit if ESC pressed
-        if processing_active is None:
-            break
-
         frame_number += 1
-
+        
     # cleanup resources
     cap.release()
-    out.release()
     cv2.destroyAllWindows()
 
     print(f"\nActual processed frames: {frame_number}")
@@ -166,4 +171,3 @@ def process_video(cap, out, detector, frame_array, processed_frame_array, proces
     print("=====================================\n")
 
     return frame_array, processed_frame_array, processing_intervals
-    
