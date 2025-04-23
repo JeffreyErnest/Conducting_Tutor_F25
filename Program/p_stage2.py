@@ -1,7 +1,12 @@
-from imports import *
+import cv2
 from names import video_out_name
-from interface import display_frame, get_screen, get_window_size
 import pygame
+import mediapipe as mp
+import json
+import numpy as np
+import os
+from mp_declaration import mediaPipeDeclaration
+from graph_config import get_export_path
 
 # Make sure pygame is initialized
 if not pygame.get_init():
@@ -137,7 +142,7 @@ def print_beats(frame_index, output_frame, filtered_significant_beats, beats, fp
 
 # processes video for second pass, displaying beats and generating analysis
 # Simplified replacement for output_process_video in p_stage2.py
-def output_process_video(cap, detector, filtered_significant_beats, processing_intervals, swaying_detector):
+def output_process_video(cap, detector, filtered_significant_beats, processing_intervals, swaying_detector, mirror_detector, cueing_detector, elbow_detector, inverted_y):
     """
     Process video for second pass, displaying beats and generating analysis with side panel
     - Uses the passed detector to avoid timestamp errors
@@ -172,7 +177,14 @@ def output_process_video(cap, detector, filtered_significant_beats, processing_i
     beats = []
     current_bpm = 0
     beat_count = 0
-    frame_index = 0
+    
+    # Determine the start frame based on processing intervals
+    start_frame = 0
+    if processing_intervals:
+        start_frame = min(start[0] for start in processing_intervals)
+    
+    # Initialize frame_index to the start frame of processing
+    frame_index = start_frame
     
     # Get the original video dimensions
     video_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -260,9 +272,9 @@ def output_process_video(cap, detector, filtered_significant_beats, processing_i
         cv2.putText(panel, f"Time signature: {metrics['suggested_time_signature']}", (10, y_pos), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
         
-        y_pos += 40
-        cv2.putText(panel, f"Pattern: {metrics['pattern_type']}", (10, y_pos), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+        # y_pos += 40
+        # cv2.putText(panel, f"Pattern: {metrics['pattern_type']}", (10, y_pos), 
+        #            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
         
         y_pos += 40
         cv2.putText(panel, f"Pattern conf: {metrics['pattern_confidence']}%", (10, y_pos), 
@@ -375,6 +387,13 @@ def output_process_video(cap, detector, filtered_significant_beats, processing_i
     last_time_signature_update = 0
     time_signature_update_interval = 30  # Update every 30 frames
     
+    # If we have processing intervals, set the video position to the start frame
+    if processing_intervals and len(processing_intervals) > 0:
+        start_frame = min(start for start, _ in processing_intervals)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+        frame_index = start_frame
+        print(f"Starting video processing at frame {start_frame}")
+    
     # Main processing loop
     while cap.isOpened():
         success, image = cap.read()
@@ -416,14 +435,11 @@ def output_process_video(cap, detector, filtered_significant_beats, processing_i
         
         # Process the frame if it's within the intervals
         if is_within_intervals(frame_index, processing_intervals):
-            # Calculate relative frame index
-            relative_frame = frame_index - current_interval[0]
-            
             # For time signature detection, we need to track hand movements
             # We'll do this by collecting coordinates from the processed frames
             try:
                 # Extract coordinates from the existing frame_array
-                if relative_frame in filtered_significant_beats:
+                if frame_index in filtered_significant_beats:
                     # Since these are beat frames, likely to have good landmark detection
                     # We'll find corresponding y-coordinate from detected landmarks
                     
@@ -456,8 +472,9 @@ def output_process_video(cap, detector, filtered_significant_beats, processing_i
                     conducting_metrics["pattern_type"] = "Compound"
                     conducting_metrics["pattern_confidence"] = 75
             
-            # Check if this is a beat frame
-            if relative_frame in filtered_significant_beats:
+            # Check if the current frame is a beat frame
+            # No need to adjust frame indices - filtered_significant_beats are already in global frame space
+            if frame_index in filtered_significant_beats:
                 # Keep the original BEAT text as requested
                 text = "BEAT!"
                 cv2.putText(output_frame, text, 
@@ -497,6 +514,34 @@ def output_process_video(cap, detector, filtered_significant_beats, processing_i
             # Update sway index for side panel
             if hasattr(swaying_detector, 'swayingIndex'):
                 conducting_metrics["sway_index"] = swaying_detector.swayingIndex
+            
+            # Get the midpoint from swaying detector for mirroring detection
+            midpoint_x = swaying_detector.default_midpoint_x if hasattr(swaying_detector, 'default_midpoint_x') else 0.5
+
+            # Use print_mirroring method for mirroring detection
+            try:
+                mirror_detector.print_mirroring(frame_index, output_frame, midpoint_x)
+            except Exception as e:
+                print(f"Warning: Error in mirroring detection: {e}")
+
+            # Get the left hand y-coordinate for cueing detection
+            left_hand_y = 0
+            if frame_index < len(mirror_detector.left_hand_y):
+                left_hand_y = mirror_detector.left_hand_y[frame_index]
+
+            # Display cueing information (crescendo/decrescendo)
+            try:
+                cueing_detector.print_cueing(output_frame, mirror_detector, left_hand_y, inverted_y, frame_index)
+            except Exception as e:
+                print(f"Warning: Error in cueing detection: {e}")
+
+            # Display elbow position warnings
+            try:
+                # Only check elbow position if we have valid data for this frame
+                if frame_index < len(elbow_detector.elbow_coords) and frame_index < len(inverted_y):
+                    elbow_detector.elbow_print(frame_index, output_frame, inverted_y)
+            except Exception as e:
+                print(f"Warning: Error in elbow detection: {e}")
         
         # Create side panel with current metrics
         side_panel = create_side_panel(
@@ -524,9 +569,14 @@ def output_process_video(cap, detector, filtered_significant_beats, processing_i
             break
             
         frame_index += 1
+        
+        # If we've reached the end of the processing interval, break out of the loop
+        if processing_intervals and frame_index > max(end for _, end in processing_intervals):
+            print(f"Reached end of processing interval at frame {frame_index}")
+            break
     
     # cleanup
-    print(f"Processed {frame_index} frames")
+    print(f"Processed {frame_index - start_frame} frames")
     print(f"Output video saved to: {output_filename}")
     
     # Close video resources
@@ -540,3 +590,17 @@ def output_process_video(cap, detector, filtered_significant_beats, processing_i
     # Close all OpenCV windows
     cv2.destroyAllWindows()
     return
+
+def get_window_size():
+    from interface import get_window_size as get_size
+    return get_size()
+
+
+def get_screen():
+    from interface import get_screen as get_scr
+    return get_scr()
+
+
+def display_frame(frame):
+    from interface import display_frame as disp_frame
+    return disp_frame(frame)

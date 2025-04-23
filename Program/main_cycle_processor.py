@@ -10,6 +10,8 @@ import numpy as np
 from mp_declaration import mediaPipeDeclaration
 from sway import swayingDetection
 from mirror import mirrorDetection
+from cueing import cueingDetection
+from elbow import elbowDetection
 from beat_filter import filter_beats
 from p_stage1 import process_video
 from p_stage2 import output_process_video
@@ -56,6 +58,8 @@ class CycleOne:
         # initialize movement detectors
         self.swaying_detector = swayingDetection()
         self.mirror_detector = mirrorDetection()
+        self.cueing_detector = cueingDetection()
+        self.elbow_detector = elbowDetection()
 
         # setup video writer
         export_path = config["export_path"]
@@ -85,7 +89,7 @@ class CycleOne:
 
         # process video and detect beats
         process_video(self.cap, self.detector, self.frame_array, self.processed_frame_array, 
-                     self.processing_intervals, self.swaying_detector, self.mirror_detector)
+                     self.processing_intervals, self.swaying_detector, self.mirror_detector, self.elbow_detector)
         
         # analyze detected movements for beats
         # Handle all 7 return values from filter_beats
@@ -151,6 +155,8 @@ class CycleTwo:
         # reuse swaying detector from cycle one
         self.swaying_detector = cycle_one_instance.swaying_detector
         self.mirror_detector = cycle_one_instance.mirror_detector
+        self.cueing_detector = cycle_one_instance.cueing_detector
+        self.elbow_detector = cycle_one_instance.elbow_detector
         # self.pattern_detector = patternDetection() // removed 
         
         # setup video writer
@@ -189,7 +195,11 @@ class CycleTwo:
         output_process_video(self.cap, self.detector, 
                            cycle_one_instance.filtered_significant_beats,
                            cycle_one_instance.processing_intervals, 
-                           self.swaying_detector)
+                           self.swaying_detector, 
+                           self.mirror_detector,
+                           self.cueing_detector,
+                           self.elbow_detector,
+                           cycle_one_instance.y_inverted)
         
         
         graph_options = config.get("processing_options", {}).get("graph_options", None)

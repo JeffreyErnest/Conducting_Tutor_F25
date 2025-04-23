@@ -1,8 +1,13 @@
-from imports import *
+from graph_config import get_export_path, get_video_name, video_beat_plot_name, video_conduct_path_name, video_cluster_plot_name, video_overtime_plot_name, video_sway_plot_Name, video_hands_plot_x_name, video_hands_plot_y_name, video_out_name, video_time_signature_plot_name
+from graph_math import process_hand_path_data, create_color_gradient_segments, normalize_and_detect_peaks, estimate_time_signature, identify_beat_positions
 import os
 import json
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib.collections import LineCollection
 
 # Get export path from configuration
+
 def get_export_path():
     try:
         with open("interface_config.json", "r") as f:
@@ -18,6 +23,7 @@ def get_export_path():
         return default_path
 
 # Helper function to get video name from configuration
+
 def get_video_name():
     try:
         with open("interface_config.json", "r") as f:
@@ -28,6 +34,7 @@ def get_video_name():
         return "unknown_video"
 
 # Video name generation functions
+
 def video_beat_plot_name():
     return f"{get_video_name()}_beat_plot"
 
@@ -52,24 +59,22 @@ def video_hands_plot_y_name():
 def video_out_name():
     return f"{get_video_name()}_analyzed"
 
+def video_time_signature_plot_name():
+    return f"{get_video_name()}_time_signature_plot"
+
 # generates all analysis graphs from the collected data
 # Add this updated function to graphs.py
 
 def generate_all_graphs(cycle_one, graph_options=None, segment_info=None):
-    """Generate all analysis graphs from the collected data.
     
-    Parameters:
-    cycle_one (CycleOne): The cycle one instance with detection data
-    graph_options (dict): Options for which graphs to generate
-    segment_info (tuple): Optional tuple of (start_frame, end_frame) for segment-specific naming
-    """
     # Default all options to True if none provided
     if graph_options is None:
         graph_options = {
             "generate_beat_plot": True,
             "generate_hand_path": True,
-            "generate_cluster_graph": True,
-            "generate_overtime_graph": True,
+            "generate_beat_cluster_graph": True,
+            "generate_maxima_cluster_graph": True,
+            "generate_time_signature_plot": True,
             "generate_swaying_graph": True,
             "generate_mirror_x_graph": True,
             "generate_mirror_y_graph": True
@@ -83,22 +88,60 @@ def generate_all_graphs(cycle_one, graph_options=None, segment_info=None):
     
     print(f"\n=== Generating Analysis Graphs{' for segment' if segment_suffix else ''} ===")
     
+    # Get beat frames if available
+    beat_frames = getattr(cycle_one, 'filtered_significant_beats', 
+                         getattr(cycle_one, 'significant_beats', None))
+    
+    # Get maxima and minima - these might be called peaks and valleys in the existing data
+    # We maintain backwards compatibility while using our new terminology
+    y_maxima = getattr(cycle_one, 'y_maxima', 
+                      getattr(cycle_one, 'y_peaks', None))
+    y_minima = getattr(cycle_one, 'y_minima', 
+                      getattr(cycle_one, 'y_valleys', None))
+    
+    # First, detect time signature from the data for consistency across graphs
+    # Start with the default or stored time signature
+    time_signature = getattr(cycle_one, 'time_signature', 4)
+    
+    # Detect the time signature using normalized_and_detect_peaks, if we have y data
+    if hasattr(cycle_one, 'y') and len(cycle_one.y) > 0:
+        y_normalized, detected_maxima, detected_minima = normalize_and_detect_peaks(cycle_one.y)
+        detected_ts = estimate_time_signature(detected_maxima, detected_minima, y_normalized)
+        
+        # If we successfully detected a time signature, use it
+        if detected_ts is not None and detected_ts > 0:
+            time_signature = detected_ts
+            print(f"Detected time signature: {time_signature}/4 - using for all graphs")
+        else:
+            print(f"Using default time signature: {time_signature}/4")
+    
+    # Now generate all graphs with the consistent time signature
+    
+    if graph_options.get("generate_time_signature_plot", True):
+        print("Generating time signature plot...")
+        time_signature_plot(cycle_one.y, segment_suffix, beat_frames, time_signature)
+    
     if graph_options.get("generate_beat_plot", True):
         print("Generating beat plot...")
         beat_plot_graph(cycle_one.processing_intervals, cycle_one.filtered_significant_beats, 
-                       cycle_one.y_peaks, cycle_one.y_valleys, cycle_one.y, segment_suffix)
+                       y_maxima, y_minima, cycle_one.y, segment_suffix)
     
     if graph_options.get("generate_hand_path", True):
         print("Generating hand path graph...")
         hand_path_graph(cycle_one.x, cycle_one.y, segment_suffix)
 
-    if graph_options.get("generate_cluster_graph", True):
-        print("Generating cluster graph...")
-        cluster_graph(cycle_one.beat_coordinates, segment_suffix)
-
-    if graph_options.get("generate_overtime_graph", True):
-        print("Generating overtime graph...")
-        overtime_graph(cycle_one.y, segment_suffix)
+    if graph_options.get("generate_beat_cluster_graph", True):
+        print("Generating beat-based cluster graph...")
+        # Pass x and y coordinates and enable show_path for better visualization
+        # This plots points at the frames where beats were detected
+        cluster_graph(cycle_one.beat_coordinates, segment_suffix, 
+                     cycle_one.y, beat_frames, time_signature,
+                     show_path=True, x=cycle_one.x)
+    
+    if graph_options.get("generate_maxima_cluster_graph", True):
+        print("Generating maxima-based cluster graph...")
+        maxima_cluster_graph(cycle_one.x, cycle_one.y, None,
+                            segment_suffix, time_signature, show_path=True)
 
     if graph_options.get("generate_swaying_graph", True):
         print("Generating swaying graph...")
@@ -120,11 +163,10 @@ def generate_all_graphs(cycle_one, graph_options=None, segment_info=None):
                                 segment_suffix)
     
     print("=== Graph Generation Complete ===\n")
-# Modify these functions in graphs.py to correctly apply the segment_suffix
 
 # Updated beat_plot_graph function for graphs.py
 
-def beat_plot_graph(intervals, beats, y_peaks, y_valleys, y, segment_suffix=""):
+def beat_plot_graph(intervals, beats, y_maxima, y_minima, y, segment_suffix=""):
     export_path = get_export_path()
     plt.figure(figsize=(12, 6))
     
@@ -152,16 +194,16 @@ def beat_plot_graph(intervals, beats, y_peaks, y_valleys, y, segment_suffix=""):
                 plt.axvline(x=beat, color='purple', linestyle='--', 
                            label="Beats" if beat == all_beats[0] else None)
     
-    # Only plot peaks and valleys within the data range
-    if y_peaks is not None and len(y_peaks) > 0:
-        valid_peaks = [p for p in y_peaks if p < len(y)]
-        if valid_peaks:
-            plt.plot(valid_peaks, [y[i] for i in valid_peaks], "o", label="Y Peaks", markersize=6)
+    # Only plot maxima and minima within the data range
+    if y_maxima is not None and len(y_maxima) > 0:
+        valid_maxima = [m for m in y_maxima if m < len(y)]
+        if valid_maxima:
+            plt.plot(valid_maxima, [y[i] for i in valid_maxima], "o", label="Maxima (Highest Points)", markersize=6)
     
-    if y_valleys is not None and len(y_valleys) > 0:
-        valid_valleys = [v for v in y_valleys if v < len(y)]
-        if valid_valleys:
-            plt.plot(valid_valleys, [y[i] for i in valid_valleys], "o", label="Y Valleys", markersize=6)
+    if y_minima is not None and len(y_minima) > 0:
+        valid_minima = [m for m in y_minima if m < len(y)]
+        if valid_minima:
+            plt.plot(valid_minima, [y[i] for i in valid_minima], "o", label="Minima (Lowest Points)", markersize=6)
     
     # Set plot title based on whether it's a segment or full video
     if segment_suffix:
@@ -194,19 +236,11 @@ def hand_path_graph(x_proc, y_proc, segment_suffix=""):
     export_path = get_export_path()
     plt.figure(figsize=(12, 6))
     
-    # prepare valid data points
-    valid_mask = ~(np.isnan(x_proc) | np.isnan(y_proc))
-    x_valid = x_proc[valid_mask]
-    # x_valid = -x_valid # turn on iff the x cord is inverted
-    y_valid = y_proc[valid_mask]
-    y_valid = -y_valid  
+    # Use helper function to process hand path data
+    x_valid, y_valid = process_hand_path_data(x_proc, y_proc)
     
-    # create color gradient segments
-    points = np.array([x_valid, y_valid]).T.reshape(-1, 1, 2)
-    segments = np.concatenate([points[:-1], points[1:]], axis=1)
-    colors = ['blue', 'red']
-    n_bins = len(x_valid)
-    custom_cmap = LinearSegmentedColormap.from_list("custom", colors, N=n_bins)
+    # Use helper function to create color gradient segments
+    segments, custom_cmap = create_color_gradient_segments(x_valid, y_valid)
     
     # plot path with gradient
     norm = plt.Normalize(0, len(x_valid))
@@ -229,28 +263,76 @@ def hand_path_graph(x_proc, y_proc, segment_suffix=""):
     plt.savefig(output_file, bbox_inches='tight')
     plt.close()
 
-def cluster_graph(beat_coordinates, segment_suffix=""):
+def cluster_graph(beat_coordinates, segment_suffix="", y=None, beat_frames=None, time_signature=4, show_path=False, x=None):
     export_path = get_export_path()  
     plt.figure(figsize=(12, 6))
-    plt.xlabel("X-Coords")
-    plt.ylabel("Y-Coords")
-
+    
     # Define colors for the beats
     colors = ['red', 'blue', 'green', 'orange']  # List of colors for beats
+    color_labels = ['1st Beat (Downbeat)', '2nd Beat', '3rd Beat', '4th Beat']
+
+    # If show_path is True, plot all frames as a path to see the full conducting pattern
+    if show_path and x is not None and y is not None and len(x) == len(y):
+        # Process the data to remove NaN values and invert y-coordinates
+        valid_mask = ~(np.isnan(x) | np.isnan(y))
+        x_valid = x[valid_mask]
+        y_valid = -y[valid_mask]  # Invert y-coordinates for proper visualization
+        
+        # Plot the full conducting path with a light gray color
+        plt.plot(x_valid, y_valid, color='lightgray', alpha=0.5, linestyle='-', 
+               linewidth=1, label='Conducting Path')
 
     # Plot the beats on the graph
     if beat_coordinates:  # Check if there are any beat coordinates
         x_beats, y_beats = zip(*beat_coordinates)  # Unzip the beat coordinates
         
-        # Plot each beat with a color based on its index
+        # We need to invert for display to maintain the right orientation
+        # In conducting, higher y value = higher physical position
+        y_beats_inverted = [-y for y in y_beats]
+        
+        # Determine beat positions:
+        beat_positions = []
+        
+        # If we have y data and beat frames, use the beat position identification
+        if y is not None and beat_frames is not None and len(beat_frames) == len(beat_coordinates):
+            # Use our advanced beat position detection
+            beat_positions = identify_beat_positions(beat_frames, y, time_signature)
+        else:
+            # Fallback: Simple sequential assignment based on expected time signature
+            beat_positions = [i % time_signature for i in range(len(x_beats))]
+        
+        # Create a legend handle list
+        legend_elements = []
+        legend_labels = []
+        
+        # Add title to clarify we're using minima for beat detection
+        plt.title("Beat Positions at Conducting Minima (beats)")
+        
+        # Plot each beat with color based on its position in the pattern
         for i in range(len(x_beats)):
-            # Calculate the color index based on the total number of colors
-            color_index = i % len(colors)  # Cycle through colors
-            plt.scatter(x_beats[i], y_beats[i], color=colors[color_index])  # Use the color for the current beat
-
+            position = beat_positions[i] if i < len(beat_positions) else i % time_signature
+            color_index = position % len(colors)  # Map position to color
+            
+            # Plot the beat
+            plt.scatter(x_beats[i], y_beats_inverted[i], color=colors[color_index], s=100, alpha=0.7)
+            
+            # Add position number beside point
+            plt.annotate(f"{position+1}", (x_beats[i], y_beats_inverted[i]), 
+                        xytext=(5, 5), textcoords='offset points', fontsize=10)
+            
+            # Add to legend if this position hasn't been seen yet
+            if position < len(colors) and color_labels[position] not in legend_labels:
+                from matplotlib.lines import Line2D
+                legend_elements.append(Line2D([0], [0], marker='o', color='w', 
+                                            markerfacecolor=colors[color_index], markersize=10))
+                legend_labels.append(color_labels[position])
+        
+        # Add legend with beat position labels
+        if legend_elements:
+            plt.legend(legend_elements, legend_labels, loc='upper right')
+    
     plt.xlabel("X-Coords")
-    plt.ylabel("Y-Coords")
-    plt.title("Hand Cluster Plot")
+    plt.ylabel("Y-Coords (Inverted)")
     plt.grid(True, linestyle='--', alpha=0.7)
     
     # Add segment suffix to filename if provided
@@ -258,65 +340,102 @@ def cluster_graph(beat_coordinates, segment_suffix=""):
     plt.savefig(output_file, bbox_inches='tight')
     plt.close()
 
-def overtime_graph(y, segment_suffix=""):
+def time_signature_plot(y, segment_suffix="", beat_frames=None, time_signature=4):
     export_path = get_export_path()
     plt.figure(figsize=(12, 6))
 
     # Plot inverted Y coordinates for visual consistency
+    # Inverting the values makes the plot match the physical conducting space
+    # (where higher values = higher hand position)
     plt.plot(range(len(y)), [-value for value in y], label="Y-Coords", color='g', alpha=0.7)
 
-    # Normalize the data
-    y_min, y_max = min(y), max(y)
-    y_normalized = [(val - y_min) / (y_max - y_min) for val in y]
+    # Use helper function to normalize data and detect maxima and minima
+    # Maxima represent highest points in conducting pattern (when inverted)
+    # Minima represent lowest points in conducting pattern (when inverted)
+    y_normalized, y_maxima, y_minima = normalize_and_detect_peaks(y)
 
-    # Set dynamic parameters for peak detection
-    prominence = (max(y_normalized) - min(y_normalized)) * 0.1
-    distance = 5
-
-    # Detect peaks and valleys
-    y_peaks, _ = find_peaks(-np.array(y_normalized), prominence=prominence, distance=distance)
-    y_valleys, _ = find_peaks(y_normalized, prominence=prominence, distance=distance)
-
-    # Mark peaks and valleys on the plot
-    for valley in y_valleys:
-        plt.plot(valley, -y_normalized[valley], 'o', color='purple', label="Downbeat" if valley == y_valleys[0] else None)
-        plt.text(valley, -y_normalized[valley], 'Downbeat', color='purple', fontsize=8, ha='right')
-    for peak in y_peaks:
-        plt.plot(peak, -y_normalized[peak], 'o', color='blue', label="Peak" if peak == y_peaks[0] else None)
-        plt.text(peak, -y_normalized[peak], 'Peak', color='blue', fontsize=8, ha='right')
-
-    # Estimate time signature from peaks
-    peak_heights = [-y_normalized[i] for i in y_peaks]
+    # Mark minima on the plot (these are the lowest points in conducting)
+    for minima in y_minima:
+        if minima < len(y_normalized) and not np.isnan(y_normalized[minima]):
+            # Invert the y-values for display consistency
+            plt.plot(minima, -y_normalized[minima], 'o', color='purple', 
+                    label="Minimum" if minima == y_minima[0] else None)
+            plt.text(minima, -y_normalized[minima], 'Min', color='purple', fontsize=8, ha='right')
     
-    if peak_heights:
-        large_wave_threshold = np.percentile(peak_heights, 75)
-        large_wave_indices = [i for i in y_peaks if -y_normalized[i] > large_wave_threshold]
-        small_wave_counts = []
+    # Calculate maxima heights for coloring (higher values = higher in physical space)
+    maxima_heights = []
+    for maxima in y_maxima:
+        if maxima < len(y_normalized) and not np.isnan(y_normalized[maxima]):
+            maxima_heights.append(-y_normalized[maxima])
+    
+    # Determine threshold for significant maxima if we have enough data
+    significant_threshold = None
+    if maxima_heights:
+        heights_array = np.array(maxima_heights)
+        significant_threshold = max(
+            np.percentile(heights_array, 75),
+            np.mean(heights_array) + 0.5 * np.std(heights_array)
+        )
+    
+    # Mark maxima with different colors based on significance
+    for i, maxima in enumerate(y_maxima):
+        if maxima < len(y_normalized) and not np.isnan(y_normalized[maxima]):
+            # Determine if this is a significant maxima (higher point)
+            is_significant = False
+            if significant_threshold is not None and i < len(maxima_heights):
+                maxima_height = maxima_heights[i] if i < len(maxima_heights) else 0
+                is_significant = maxima_height > significant_threshold
+            
+            # Use different colors/sizes for significant vs regular maxima
+            maxima_color = 'red' if is_significant else 'blue'
+            maxima_size = 8 if is_significant else 6
+            maxima_label = "Significant Maximum" if is_significant and all(p != "Significant Maximum" for p in plt.gca().get_legend_handles_labels()[1]) else \
+                        "Maximum" if maxima == y_maxima[0] else None
+            
+            # Invert the y-values for display consistency
+            plt.plot(maxima, -y_normalized[maxima], 'o', color=maxima_color, 
+                    markersize=maxima_size, label=maxima_label)
+            
+            # Add label text
+            label_text = "Max" if not is_significant else "Sig.Max"
+            plt.text(maxima, -y_normalized[maxima], label_text, color=maxima_color, 
+                    fontsize=8, ha='right')
 
-        for i in range(1, len(large_wave_indices)):
-            small_wave_count = sum(1 for j in y_peaks if large_wave_indices[i-1] < j < large_wave_indices[i] and -y_normalized[j] <= large_wave_threshold)
-            small_wave_counts.append(small_wave_count)
+    # Mark beat frames if available with beat position numbers
+    if beat_frames:
+        # Use the identify_beat_positions function to determine beat positions
+        # This classifies beats by their position in the conducting pattern
+        beat_positions = identify_beat_positions(beat_frames, y, time_signature)
+        colors = ['red', 'blue', 'green', 'orange']  # Colors for different beat positions
+        
+        for i, frame in enumerate(beat_frames):
+            if frame < len(y):
+                position = beat_positions[i] if i < len(beat_positions) else i % time_signature
+                label = f"Beat {position+1}" if i == 0 else None
+                # plt.axvline(x=frame, color=colors[position % len(colors)], linestyle='--', alpha=0.5, label=label)
+                
+                # Add beat position number (inverted for consistent display)
+                plt.text(frame, -y[frame] if frame < len(y) else 0, 
+                         f"{position+1}", color=colors[position % len(colors)], 
+                         fontsize=10, fontweight='bold', ha='center')
 
-            time_signature = small_wave_count + 1
-            print(f"Estimated Time Signature at frame {large_wave_indices[i]}: {time_signature}/4")
-
+    # Try to detect the time signature based on peaks
+    # This uses the logic: large maximum waves followed by minima are downbeats,
+    # and counting minima between consecutive downbeats determines the time signature
+    detected_ts = estimate_time_signature(y_maxima, y_minima, y_normalized)
+    if detected_ts:
+        plt.title(f"Time Signature Plot - Detected Time Signature: {detected_ts}/4")
     else:
-        print("No significant peaks detected to determine time signature.")
-
-    # Print detected peaks for debugging
-    print("Detected Peaks and Heights:")
-    for i in y_peaks:
-        print(f"Frame {i}: Height {y[i]}")
+        plt.title(f"Time Signature Plot")
 
     # Finalize and show the plot
     plt.xlabel("Frame Number")
-    plt.ylabel("Coordinate Value")
-    plt.title("Overtime Graph")
+    plt.ylabel("Y Value (Inverted)")
     plt.grid(True, linestyle='--', alpha=0.7)
     plt.legend()
 
     # Save the plot with segment suffix if provided
-    output_file = os.path.join(export_path, video_overtime_plot_name() + segment_suffix + '.png')
+    output_file = os.path.join(export_path, video_time_signature_plot_name() + segment_suffix + '.png')
     plt.savefig(output_file, bbox_inches='tight')
     plt.close()
 
@@ -430,4 +549,83 @@ def mirror_y_coordinate_graph(left_hand_y, right_hand_y, segment_suffix=""):
     # Add segment suffix to filename if provided
     output_file = os.path.join(export_path, video_hands_plot_y_name() + segment_suffix + '.png')
     plt.savefig(output_file)
+    plt.close()
+
+def maxima_cluster_graph(x, y, y_peaks, segment_suffix="", time_signature=4, show_path=True):
+   
+    export_path = get_export_path()  
+    plt.figure(figsize=(12, 6))
+    
+    # Define colors for the maxima
+    colors = ['red', 'blue', 'green', 'orange']  # List of colors for maxima
+    color_labels = ['1st Max', '2nd Max', '3rd Max', '4th Max']
+
+    # If show_path is True, plot all frames as a path to see the full conducting pattern
+    if show_path and len(x) == len(y):
+        # Process the data to remove NaN values and invert y-coordinates
+        valid_mask = ~(np.isnan(x) | np.isnan(y))
+        x_valid = x[valid_mask]
+        # Invert y-coordinates for proper visualization
+        y_valid = -y[valid_mask]  
+        
+        # Plot the full conducting path with a light gray color
+        plt.plot(x_valid, y_valid, color='lightgray', alpha=0.5, linestyle='-', 
+               linewidth=1, label='Conducting Path')
+
+    # Due to the coordinate system inversion, maxima in the data (highest points)
+    # correspond to the highest points in the physical conducting gesture
+    
+    # Get normalized data and find maxima (which are the actual highest points)
+    _, y_maxima, _ = normalize_and_detect_peaks(y)
+    
+    if len(y_maxima) > 0 and len(x) == len(y):
+        # Filter maxima that are within the array bounds
+        valid_maxima = [m for m in y_maxima if m < len(y)]
+        
+        if valid_maxima:
+            # Get x,y values at the maxima (which are the highest points of gesture)
+            x_maxima = [x[m] for m in valid_maxima]
+            y_maxima_vals = [y[m] for m in valid_maxima]
+            
+            # Invert y for display consistency
+            y_maxima_inverted = [-y for y in y_maxima_vals]
+            
+            # Create a legend handle list
+            legend_elements = []
+            legend_labels = []
+            
+            # Add title to clarify we're using maxima
+            plt.title("Cluster of Conducting Gesture Maxima (Highest Points)")
+            
+            # Plot each maximum with color based on its position in the pattern
+            for i in range(len(x_maxima)):
+                # Assign positions based on sequence (mod time_signature)
+                position = i % time_signature
+                color_index = position
+                
+                # Plot the maximum
+                plt.scatter(x_maxima[i], y_maxima_inverted[i], color=colors[color_index], s=100, alpha=0.7)
+                
+                # Add position number beside point
+                plt.annotate(f"{position+1}", (x_maxima[i], y_maxima_inverted[i]), 
+                            xytext=(5, 5), textcoords='offset points', fontsize=10)
+                
+                # Add to legend if this position hasn't been seen yet
+                if position < len(colors) and color_labels[position] not in legend_labels:
+                    from matplotlib.lines import Line2D
+                    legend_elements.append(Line2D([0], [0], marker='o', color='w', 
+                                                markerfacecolor=colors[color_index], markersize=10))
+                    legend_labels.append(color_labels[position])
+            
+            # Add legend with maxima position labels
+            if legend_elements:
+                plt.legend(legend_elements, legend_labels, loc='upper right')
+    
+    plt.xlabel("X-Coords")
+    plt.ylabel("Y-Coords (Inverted)")
+    plt.grid(True, linestyle='--', alpha=0.7)
+    
+    # Add segment suffix to filename if provided
+    output_file = os.path.join(export_path, video_cluster_plot_name() + "_maxima" + segment_suffix + '.png')
+    plt.savefig(output_file, bbox_inches='tight')
     plt.close()

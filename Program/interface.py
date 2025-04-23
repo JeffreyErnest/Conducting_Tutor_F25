@@ -9,6 +9,14 @@ import time
 import sys
 import threading
 
+# Import additional modules
+from main_config_manager import load_config
+from main_graph_options import select_graph_options
+from main_segment_processor import process_segment
+from main_conducting_analysis import run_conducting_analysis
+from main_cycle_processor import CycleOne, CycleTwo
+from graphs import generate_all_graphs
+
 # Global variables for external functions
 should_render_frame = True
 pygame_initialized = False
@@ -41,7 +49,7 @@ processing_options = {
     
     # Add export options for graphs and videos
     "export_beat_detection": CONDUCTING_MODULES_AVAILABLE,
-    "export_pattern_analysis": CONDUCTING_MODULES_AVAILABLE,
+    # "export_pattern_analysis": CONDUCTING_MODULES_AVAILABLE,
 }
 
 # Initialize pygame if needed
@@ -495,7 +503,7 @@ def draw_menu():
     if CONDUCTING_MODULES_AVAILABLE:
         categories["Conducting Analysis"] = [
             "export_beat_detection",
-            "export_pattern_analysis"
+            # "export_pattern_analysis" // removed
         ]
     
     # Draw processing options checkboxes

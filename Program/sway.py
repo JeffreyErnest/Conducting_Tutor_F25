@@ -1,4 +1,7 @@
-from imports import *
+
+
+import cv2
+
 
 class swayingDetection:
     def __init__(self):

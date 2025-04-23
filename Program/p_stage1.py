@@ -1,10 +1,11 @@
-from imports import *
 import os
 import json
 import cv2
 import numpy as np
 import pygame
 import mediapipe as mp
+
+from mp_declaration import mediaPipeDeclaration
 
 # processes a single frame and returns the annotated image and detection results
 def process_frame(cap, detector, image):
@@ -27,7 +28,7 @@ def process_frame(cap, detector, image):
     return annotated_image_bgr, detection_result
 
 # processes landmarks for each frame, tracking hand positions and movement
-def process_landmarks(detection_result, frame_array, processed_frame_array, processing_active, swaying_detector, mirror_detector):
+def process_landmarks(detection_result, frame_array, processed_frame_array, processing_active, swaying_detector, mirror_detector, elbow_detector=None):
     pose_landmarks_list = detection_result.pose_landmarks
     if pose_landmarks_list:
         for landmarks in pose_landmarks_list:
@@ -47,13 +48,21 @@ def process_landmarks(detection_result, frame_array, processed_frame_array, proc
                 mirror_detector.mirror_calculation(landmarks[15].x, landmarks[15].y, landmarks[16].x, landmarks[16].y)
                 swaying_detector.midpoint_calculation(landmarks[12].x, landmarks[11].x)
                 
+                # Update elbow detector if provided
+                if elbow_detector:
+                    # Extract landmarks for elbow detection (elbow, shoulder, hip)
+                    elbow_pos = (landmarks[14].x, landmarks[14].y)  # Right elbow
+                    shoulder_pos = (landmarks[12].x, landmarks[12].y)  # Right shoulder
+                    hip_pos = (landmarks[24].x, landmarks[24].y)  # Right hip
+                    elbow_detector.elbow_calculation(elbow_pos, shoulder_pos, hip_pos)
+                
                 # Set the midpoint when processing starts
                 if processing_active and not swaying_detector.midpointflag:
                     swaying_detector.set_midpoint()  # This will set the default midpoint only when processing starts
     return
 
 # main video processing loop with predetermined intervals
-def process_video(cap, detector, frame_array, processed_frame_array, processing_intervals, swaying_detector, mirror_detector):
+def process_video(cap, detector, frame_array, processed_frame_array, processing_intervals, swaying_detector, mirror_detector, elbow_detector=None):
     print("\n=== Video Processing Debug Information ===")
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     fps = int(cap.get(cv2.CAP_PROP_FPS))
@@ -81,8 +90,26 @@ def process_video(cap, detector, frame_array, processed_frame_array, processing_
     # Track if we're inside a processing interval
     was_processing = False
     is_processing = False
+    
+    # Determine the range of frames to process based on processing_intervals
+    start_process = total_frames
+    end_process = 0
+    
+    # Find the minimum start and maximum end frames from all intervals
+    if processing_intervals:
+        for start, end in processing_intervals:
+            start_process = min(start_process, start)
+            end_process = max(end_process, end)
+        
+        print(f"Processing frame range: {start_process} to {end_process}")
+        
+        # Set the initial position to the first frame we need to process
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_process)
+        frame_number = start_process
+    else:
+        print("Warning: No processing intervals defined, processing entire video")
 
-    while cap.isOpened():
+    while cap.isOpened() and (not processing_intervals or frame_number <= end_process):
         success, image = cap.read()
         frames_read += 1
         
@@ -136,7 +163,7 @@ def process_video(cap, detector, frame_array, processed_frame_array, processing_
         if annotated_image_bgr is not None:
             # Process landmarks and save annotated frame
             process_landmarks(detection_result, frame_array, processed_frame_array, 
-                             is_processing, swaying_detector, mirror_detector)
+                             is_processing, swaying_detector, mirror_detector, elbow_detector)
         # increment frame counter
         frame_number += 1
         
@@ -144,7 +171,7 @@ def process_video(cap, detector, frame_array, processed_frame_array, processing_
     cap.release()
     cv2.destroyAllWindows()
 
-    print(f"Actual processed frames: {frame_number}")
+    print(f"Actual processed frames: {frame_number - start_process}")
     print(f"Number of processing intervals: {len(processing_intervals)}")
     print("=====================================\n")
 

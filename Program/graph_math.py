@@ -6,27 +6,7 @@ from scipy.signal import find_peaks
 
 # Function to process hand path data
 def process_hand_path_data(x_proc, y_proc):
-    """
-    Process hand path data for visualization.
-    
-    Parameters:
-    -----------
-    x_proc, y_proc : array-like
-        X and Y coordinates of the conducting hand
-        
-    Returns:
-    --------
-    x_valid, y_valid : array
-        Filtered and processed coordinates with NaN values removed
-        and y-coordinates inverted for proper visualization
-        
-    Notes:
-    ------
-    We invert y-coordinates (multiply by -1) to match the traditional 
-    conducting visualization where the gesture goes upward physically 
-    for higher notes, but in computer coordinates, higher y values 
-    are lower on the screen.
-    """
+  
     # Filter out NaN values
     valid_mask = ~(np.isnan(x_proc) | np.isnan(y_proc))
     x_valid = x_proc[valid_mask]
@@ -49,169 +29,272 @@ def create_color_gradient_segments(x_valid, y_valid):
 
 # Function to normalize data and detect peaks and valleys
 def normalize_and_detect_peaks(y):
-    """
-    Normalize the y-coordinate data and detect peaks and valleys.
+    y_array = np.array(y)
     
-    Parameters:
-    -----------
-    y : array-like
-        Y-coordinate values
-        
-    Returns:
-    --------
-    y_normalized : array
-        Normalized y-coordinates (0-1 range)
-    y_peaks : array
-        Indices of peaks (maxima) in the y-coordinates
-    y_valleys : array
-        Indices of valleys (minima) in the y-coordinates
-        
-    Notes:
-    ------
-    - For peaks: we use find_peaks on -y because the find_peaks function
-      finds local maxima, and we want to find the highest points in y.
-      By using -y, we effectively find the lowest points in -y, which
-      correspond to the highest points in y.
-    - For valleys: we use find_peaks on y to find the lowest points in y.
-    """
-    # Normalize data to 0-1 range
-    y_min, y_max = min(y), max(y)
-    y_normalized = [(val - y_min) / (y_max - y_min) for val in y]
+    if len(y_array) == 0:
+        return np.array([]), np.array([]), np.array([])
     
-    # Set detection parameters
-    prominence = (max(y_normalized) - min(y_normalized)) * 0.1
-    distance = 5
+    # Handling NaN values
+    valid_mask = ~np.isnan(y_array)
+    y_valid = y_array[valid_mask]
     
-    # Find peaks (maxima) - these are the highest points in y
-    # Using -y normalized finds the highest points in the original y
-    y_peaks, _ = find_peaks(-np.array(y_normalized), prominence=prominence, distance=distance)
+    if len(y_valid) == 0:
+        return np.array([]), np.array([]), np.array([])
     
-    # Find valleys (minima) - these are the lowest points in y
-    # Using y normalized directly finds the lowest points in the original y
-    y_valleys, _ = find_peaks(y_normalized, prominence=prominence, distance=distance)
+    # Normalize the data to range 0-1
+    if np.max(y_valid) != np.min(y_valid):
+        y_normalized = (y_valid - np.min(y_valid)) / (np.max(y_valid) - np.min(y_valid))
+    else:
+        y_normalized = np.zeros_like(y_valid)
     
-    return y_normalized, y_peaks, y_valleys
+    # Create a full array with original dimensions for visualization
+    y_norm_full = np.full_like(y_array, np.nan)
+    y_norm_full[valid_mask] = y_normalized
+    
+    # Calculate adaptive parameters for peak detection
+    # Base prominence on the data variance
+    data_range = np.max(y_valid) - np.min(y_valid)
+    base_prominence = max(0.02, data_range * 0.005)  # At least 2% of range
+    
+    # Auto-adjust distance based on data length
+    min_distance = max(3, len(y_valid) // 200)  # At least 3 frames apart
+    
+    # Find valleys (highest points in physical space)
+    y_maxima, _ = find_peaks(-y_array, prominence=base_prominence, distance=min_distance)
+    
+    # Find peaks (lowest points in physical space)
+    y_minima, _ = find_peaks(y_array, prominence=base_prominence, distance=min_distance)
+    
+    # Debug information
+    print(f"Peak detection settings: prominence={base_prominence}, distance={min_distance}")
+    print(f"Found {len(y_maxima)} maxima (high points) and {len(y_minima)} minima (low points)")
+    
+    return y_norm_full, y_maxima, y_minima
 
-# Function to estimate time signature from peaks
-def estimate_time_signature(y_peaks, y_normalized):
-    peak_heights = [-y_normalized[i] for i in y_peaks]
-    if peak_heights:
-        large_wave_threshold = np.percentile(peak_heights, 75)
-        large_wave_indices = [i for i in y_peaks if -y_normalized[i] > large_wave_threshold]
-        small_wave_counts = []
-        time_signatures = []
+# Function to estimate time signature from peaks and valleys
+def estimate_time_signature(y_maxima, y_minima, y_normalized):
+    if len(y_maxima) == 0 or len(y_minima) == 0:
+        print("Not enough maxima or minima to determine time signature.")
+        return None
+    
+    # Get heights of maxima (negative values, since these are the highest points)
+    maxima_heights = []
+    for i in y_maxima:
+        if i < len(y_normalized) and not np.isnan(y_normalized[i]):
+            maxima_heights.append(-y_normalized[i])
+    
+    if not maxima_heights or len(maxima_heights) < 2:
+        return None
+    
+    # Adaptive threshold to identify significant maxima (large upward waves)
+    # Use statistical analysis to determine threshold
+    heights_array = np.array(maxima_heights)
+    
+    # Using percentile helps with varying maxima heights
+    # Higher percentile means we only select the most prominent maxima
+    significant_wave_threshold = max(
+        np.percentile(heights_array, 75),  # 75th percentile
+        np.mean(heights_array) + 0.5 * np.std(heights_array)  # Mean + 0.5 std dev
+    )
+    
+    print(f"Significant wave threshold: {significant_wave_threshold}")
+    
+    # Identify significant maxima (large upward waves)
+    significant_maxima = []
+    for i, height in enumerate(maxima_heights):
+        if i < len(y_maxima) and height > significant_wave_threshold:
+            significant_maxima.append(y_maxima[i])
+    
+    if not significant_maxima:
+        # Try a lower threshold if no significant maxima found
+        significant_wave_threshold = np.percentile(heights_array, 60)
+        for i, height in enumerate(maxima_heights):
+            if i < len(y_maxima) and height > significant_wave_threshold:
+                significant_maxima.append(y_maxima[i])
+    
+    if not significant_maxima:
+        print("No significant maxima found to determine time signature.")
+        return None
+    
+    # Sort significant maxima in ascending order
+    significant_maxima.sort()
+    
+    # Find downbeats (minima) that follow each significant maximum
+    # Downbeats are when the conductor hits the lowest point after a high point
+    downbeat_indices = []
+    for peak in significant_maxima:
+        # Find minima that come after this maximum
+        minima_after_peak = [v for v in y_minima if v > peak]
+        if minima_after_peak:
+            # Find the closest minimum that follows this maximum (should be the downbeat)
+            closest_minimum = min(minima_after_peak, key=lambda v: v - peak)
+            # Only consider if it's within a reasonable window
+            max_distance = min(30, len(y_normalized) // 20)  # Adaptive window size
+            if 0 < closest_minimum - peak < max_distance:
+                downbeat_indices.append(closest_minimum)
+    
+    if len(downbeat_indices) < 2:
+        print(f"Not enough downbeats found ({len(downbeat_indices)}) to determine time signature.")
+        return None
+    
+    # Sort the downbeat indices
+    downbeat_indices.sort()
+    
+    # Calculate the number of beats in each measure
+    time_signatures = []
+    for i in range(1, len(downbeat_indices)):
+        start_idx = downbeat_indices[i-1]
+        end_idx = downbeat_indices[i]
         
-        for i in range(1, len(large_wave_indices)):
-            small_wave_count = sum(1 for j in y_peaks if large_wave_indices[i-1] < j < large_wave_indices[i] and -y_normalized[j] <= large_wave_threshold)
-            small_wave_counts.append(small_wave_count)
-            time_signature = small_wave_count + 1
-            time_signatures.append(time_signature)
-            print(f"Estimated Time Signature at frame {large_wave_indices[i]}: {time_signature}/4")
+        # Find all minima between consecutive downbeats
+        # These represent individual beats in the measure
+        intermediate_minima = [v for v in y_minima 
+                              if start_idx < v < end_idx]
         
-        # Return the most common time signature if we have any
-        if time_signatures:
-            from collections import Counter
-            counter = Counter(time_signatures)
-            most_common_ts = counter.most_common(1)[0][0]
-            print(f"Most common time signature: {most_common_ts}/4")
+        # The time signature is the total number of beats in the measure
+        # which is the number of intermediate minima + 1 (for the downbeat)
+        measure_beat_count = len(intermediate_minima) + 1
+        
+        # Only keep reasonable time signatures (most common are 2, 3, 4, 6)
+        if 2 <= measure_beat_count <= 7:
+            time_signatures.append(measure_beat_count)
+            print(f"Measure from frames {start_idx}-{end_idx}: {measure_beat_count} beats")
+    
+    if not time_signatures:
+        return None
+    
+    # Find the most common time signature
+    from collections import Counter
+    counter = Counter(time_signatures)
+    most_common = counter.most_common(1)[0]
+    most_common_ts = most_common[0]
+    count = most_common[1]
+    
+    # Only return a result if we have enough consistent measures
+    if count >= max(2, len(time_signatures) // 3):
+        print(f"Detected time signature: {most_common_ts}/4 (found in {count} measures)")
+        return most_common_ts
+    else:
+        print(f"Inconsistent time signatures detected, most common: {most_common_ts}/4 ({count} occurrences)")
+        # Still return most common if we have at least 2 measures with that signature
+        if count >= 2:
             return most_common_ts
         return None
-    else:
-        print("No significant peaks detected to determine time signature.")
-        return None
 
-# Function to identify beat positions in a pattern
+# Function to identify beat positions in a conducting pattern
 def identify_beat_positions(beat_frames, y, time_signature=4):
-    """
-    Classify beats by their position in a conducting pattern (1st, 2nd, 3rd, 4th beat)
-    even if some beats are missed during detection.
-    
-    Parameters:
-    -----------
-    beat_frames : list
-        Frame numbers where beats were detected
-    y : list or array
-        Y-coordinate values for the conducting hand
-    time_signature : int, optional
-        Time signature numerator (default is 4 for 4/4 time)
-        
-    Returns:
-    --------
-    list
-        Beat positions (0-indexed, so 0=1st beat, 1=2nd beat, etc.)
-    """
-    if not beat_frames:
+    if not beat_frames or len(beat_frames) == 0:
         return []
     
-    # Get normalized data and peaks/valleys
-    y_normalized, y_peaks, y_valleys = normalize_and_detect_peaks(y)
+    # Get normalized data and detect maxima/minima
+    y_normalized, y_maxima, y_minima = normalize_and_detect_peaks(y)
     
-    # Try to get time signature from the data
-    detected_ts = estimate_time_signature(y_peaks, y_normalized)
+    # Try to detect time signature from the data if possible
+    detected_ts = estimate_time_signature(y_maxima, y_minima, y_normalized)
     if detected_ts is not None and detected_ts > 0:
         time_signature = detected_ts
-    
-    # Find the extremes in y values at beats
-    beat_y_values = [y[frame] if frame < len(y) else 0 for frame in beat_frames]
-    beat_positions = []
-    
-    # For measures where we can identify clear patterns
-    # Find potential downbeats (typically lowest y value in the pattern)
-    # Pattern recognition based on vertical position and movement
-    
-    # Calculate the amplitude of each beat
-    amplitudes = []
-    for i, frame in enumerate(beat_frames):
-        # Find nearest peak or valley
-        nearest_peak = min(y_peaks, key=lambda p: abs(p - frame)) if len(y_peaks) > 0 else None
-        nearest_valley = min(y_valleys, key=lambda v: abs(v - frame)) if len(y_valleys) > 0 else None
-        
-        if nearest_peak is not None and nearest_valley is not None:
-            # Get the closer one
-            if abs(nearest_peak - frame) < abs(nearest_valley - frame):
-                amplitude = abs(y_normalized[nearest_peak])
-            else:
-                amplitude = abs(y_normalized[nearest_valley])
-        elif nearest_peak is not None:
-            amplitude = abs(y_normalized[nearest_peak])
-        elif nearest_valley is not None:
-            amplitude = abs(y_normalized[nearest_valley])
-        else:
-            amplitude = 0
-            
-        amplitudes.append(amplitude)
-    
-    # If we have enough beats, try to identify patterns
-    if len(amplitudes) >= time_signature:
-        # Group into potential measures
-        potential_measures = []
-        for i in range(0, len(amplitudes), time_signature):
-            if i + time_signature <= len(amplitudes):
-                potential_measures.append(amplitudes[i:i+time_signature])
-        
-        # Find the pattern by analyzing typical conducting patterns
-        # Downbeat (1) is usually strongest, followed by beat 3 in 4/4
-        pattern_template = None
-        if time_signature == 4:  # 4/4 time
-            # Expected relative strengths: 1st is strongest, 3rd is second strongest
-            pattern_template = [0, 0, 0, 0]  # Will be filled with position indices
-        elif time_signature == 3:  # 3/4 time
-            # Expected relative strengths: 1st is strongest
-            pattern_template = [0, 0, 0]
-        elif time_signature == 2:  # 2/4 time
-            pattern_template = [0, 0]
-            
-        # Fallback if we can't determine pattern
-        if pattern_template is None:
-            # Simple sequential assignment
-            beat_positions = [i % time_signature for i in range(len(beat_frames))]
-        else:
-            # Use the amplitude to identify beat positions
-            for i, frame in enumerate(beat_frames):
-                measure_position = i % time_signature
-                beat_positions.append(measure_position)
+        print(f"Using detected time signature: {time_signature}/4")
     else:
-        # If we don't have enough data, use simple sequential assignment
-        beat_positions = [i % time_signature for i in range(len(beat_frames))]
+        print(f"Using default time signature: {time_signature}/4")
     
-    return beat_positions 
+    # Calculate maxima heights to identify significant maxima
+    maxima_heights = []
+    for i in y_maxima:
+        if i < len(y_normalized) and not np.isnan(y_normalized[i]):
+            maxima_heights.append(-y_normalized[i])
+    
+    if not maxima_heights:
+        print("No valid maxima heights found, using simple sequential assignment")
+        return [i % time_signature for i in range(len(beat_frames))]
+    
+    # Adaptive threshold for significant maxima
+    heights_array = np.array(maxima_heights)
+    significant_wave_threshold = max(
+        np.percentile(heights_array, 70),
+        np.mean(heights_array) + 0.5 * np.std(heights_array)
+    )
+    
+    # Find significant maxima (large upward waves before downbeats)
+    significant_maxima = []
+    for i, height in enumerate(maxima_heights):
+        maxima_idx = y_maxima[i] if i < len(y_maxima) else -1
+        if maxima_idx >= 0 and height > significant_wave_threshold:
+            significant_maxima.append(maxima_idx)
+    
+    if not significant_maxima:
+        print("No significant maxima found, trying lower threshold")
+        # Try with lower threshold
+        significant_wave_threshold = np.percentile(heights_array, 60)
+        for i, height in enumerate(maxima_heights):
+            maxima_idx = y_maxima[i] if i < len(y_maxima) else -1
+            if maxima_idx >= 0 and height > significant_wave_threshold:
+                significant_maxima.append(maxima_idx)
+    
+    # If still no significant maxima found, fall back to simple assignment
+    if not significant_maxima:
+        print("No significant maxima found even with lower threshold")
+        return [i % time_signature for i in range(len(beat_frames))]
+    
+    # Sort significant maxima
+    significant_maxima.sort()
+    
+    # Find downbeats - minima following significant maxima
+    downbeat_frames = []
+    for peak in significant_maxima:
+        minima_after_peak = [v for v in y_minima if v > peak]
+        if minima_after_peak:
+            closest_minimum = min(minima_after_peak, key=lambda v: v - peak)
+            max_distance = min(30, len(y_normalized) // 20)
+            if 0 < closest_minimum - peak < max_distance:
+                downbeat_frames.append(closest_minimum)
+    
+    if not downbeat_frames:
+        print("No downbeat frames identified")
+        return [i % time_signature for i in range(len(beat_frames))]
+    
+    # Match downbeat frames to beat frames
+    downbeat_indices = []
+    for downbeat in downbeat_frames:
+        # Find closest beat frame to this downbeat
+        if beat_frames:
+            closest_idx = min(range(len(beat_frames)), 
+                            key=lambda i: abs(beat_frames[i] - downbeat))
+            # Only include if it's reasonably close
+            if abs(beat_frames[closest_idx] - downbeat) < 15:
+                downbeat_indices.append(closest_idx)
+    
+    # If we have identified downbeats, use them to determine beat positions
+    if downbeat_indices:
+        # Sort to ensure proper ordering
+        downbeat_indices.sort()
+        
+        # Initialize positions array
+        beat_positions = []
+        
+        for i in range(len(beat_frames)):
+            if i in downbeat_indices:
+                # This is a downbeat (first beat)
+                beat_positions.append(0)
+            elif i < min(downbeat_indices) if downbeat_indices else float('inf'):
+                # This is before the first identified downbeat
+                # Calculate based on distance to first downbeat
+                beats_to_first_downbeat = min(downbeat_indices) - i
+                # This handles "pickup" measures (partial measures at start)
+                position = time_signature - beats_to_first_downbeat
+                # Ensure it's within valid range
+                beat_positions.append(position if 0 <= position < time_signature else i % time_signature)
+            else:
+                # Find the most recent downbeat before this beat
+                prev_downbeat = max([d for d in downbeat_indices if d < i], default=-1)
+                if prev_downbeat == -1:
+                    # Fallback if no previous downbeat found
+                    beat_positions.append(i % time_signature)
+                else:
+                    # Calculate position based on distance from previous downbeat
+                    position = (i - prev_downbeat) % time_signature
+                    beat_positions.append(position)
+        
+        return beat_positions
+    
+    # Fallback to simple sequential assignment if no downbeats identified
+    return [i % time_signature for i in range(len(beat_frames))] 

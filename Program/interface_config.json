@@ -1,16 +1,16 @@
 {
-  "video_path": "C:/Users/Jeffrey Ernest/Desktop/videos/v1.mp4",
+  "video_path": "C:/Users/Jeffrey Ernest/Desktop/videos/Marchingband(2).mp4",
   "export_path": "output",
   "crop_rect": [
-    336,
-    160,
-    332,
-    560
+    106,
+    28,
+    1500,
+    1046
   ],
   "process_markers": [
     [
       0,
-      306
+      233
     ]
   ],
   "processing_options": {

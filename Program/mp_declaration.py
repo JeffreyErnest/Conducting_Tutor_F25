@@ -1,4 +1,9 @@
-from imports import *
+import mediapipe as mp
+import numpy as np
+from mediapipe.framework.formats import landmark_pb2
+
+# Import specific functions
+from main_segment_processor import process_segment
 
 class mediaPipeDeclaration:
 
@@ -10,7 +15,7 @@ class mediaPipeDeclaration:
     @staticmethod
     def get_pose_landmarker():
         options = mediaPipeDeclaration.PoseLandmarkerOptions(
-                  base_options=mediaPipeDeclaration.BaseOptions(model_asset_path='pose_landmarker_full.task'),
+                  base_options=mediaPipeDeclaration.BaseOptions(model_asset_path='pose_landmarks/pose_landmarker_full.task'),
                   running_mode=mediaPipeDeclaration.VisionRunningMode.VIDEO
                 )
         return mediaPipeDeclaration.PoseLandmarker.create_from_options(options)
@@ -32,3 +37,19 @@ class mediaPipeDeclaration:
                 mp.solutions.drawing_styles.get_default_pose_landmarks_style()
             )
         return annotated_image
+
+# Function to declare mediapipe processing
+def declare_mp_processing():
+    """Declare mediapipe processing for segments"""
+    # Initialize mediapipe solutions
+    mp_hands = mp.solutions.hands
+    mp_pose = mp.solutions.pose
+    
+    # Process segment with mediapipe
+    def process_with_mediapipe(segment):
+        with mp_hands.Hands() as hands, mp_pose.Pose() as pose:
+            # Process segment
+            processed_segment = process_segment(segment, hands, pose)
+            return processed_segment
+    
+    return process_with_mediapipe
