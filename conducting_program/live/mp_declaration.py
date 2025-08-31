@@ -13,7 +13,7 @@ class mediaPipeDeclaration:
     @staticmethod
     def get_pose_landmarker(result_callback=None):
         options = mediaPipeDeclaration.PoseLandmarkerOptions(
-                  base_options=mediaPipeDeclaration.BaseOptions(model_asset_path='pose_landmarks/pose_landmarker_full.task'),
+                  base_options=mediaPipeDeclaration.BaseOptions(model_asset_path='pose_landmarks/pose_landmarker_lite.task'),
                   running_mode=mediaPipeDeclaration.VisionRunningMode.LIVE_STREAM,
                   result_callback=result_callback
                 )
