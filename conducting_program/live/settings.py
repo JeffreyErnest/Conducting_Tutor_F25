@@ -4,7 +4,7 @@
 # As well as constants that are set by the user.
 
 # Setting that controls BPM
-class BPM_settings:
+class BPMSettings:
     def __init__(self):
         self.beats_per_minute = 0
     
