@@ -5,7 +5,11 @@
 
 class LiveStart:
     def __init__(self):
-        self.state = "setup" # "setup", "coundown", "processing"
+        self.state = "setup" # "setup", "coundown", "processing"; System State
+
+        # Hand Variables
+        self.left_wrist_y15 = None 
+        self.right_wrist_y16 = None
 
         # wait_for_start_movement variables
         self.processing_active = False
@@ -15,7 +19,7 @@ class LiveStart:
         self.previous_x_left = None
         self.previous_y_right = None
         self.frame_count_since_movement = 0
-        self.slight_movement_threshold = .005 # TODO: somehow make this dynamic
+        self.slight_movement_threshold = .005 # TODO: some how make this dynamic
         self.movement_counter = 0
 
 
@@ -42,20 +46,23 @@ class LiveStart:
         # Show body outline overlay
         pass
     
-    def wait_for_start_movement(self, left_y, right_y):
+    def wait_for_start_movement(self, detection_result):
+
+        self.update_landmarks(detection_result) # Update the landmarks
+
         if self.previous_y_left is None or self.previous_y_right is None:
-            self.previous_y_left = left_y
-            self.previous_y_right = right_y
+            self.previous_y_left = self.left_wrist_y15
+            self.previous_y_right = self.right_wrist_y16
 
         significant_movement_threshold = 0.1  
 
         # Check for significant upward movement for both left and right
-        left_moved_up = left_y < self.previous_y_left - significant_movement_threshold
-        right_moved_up = right_y < self.previous_y_right - significant_movement_threshold
+        left_moved_up = self.left_wrist_y15 < self.previous_y_left - significant_movement_threshold
+        right_moved_up = self.right_wrist_y16 < self.previous_y_right - significant_movement_threshold
         
         # Check for significant downward movement for both left and right
-        left_dropped_down = left_y > self.previous_y_left + significant_movement_threshold
-        right_dropped_down = right_y > self.previous_y_right + significant_movement_threshold
+        left_dropped_down = self.left_wrist_y15 > self.previous_y_left + significant_movement_threshold
+        right_dropped_down = self.right_wrist_y16 > self.previous_y_right + significant_movement_threshold
 
         # Determine if both hands are up
         both_hands_up = (left_moved_up and right_moved_up) and not (left_dropped_down or right_dropped_down)
@@ -69,6 +76,17 @@ class LiveStart:
                 self.state = "processing" # Set state to Processing
         elif left_dropped_down or right_dropped_down:  # Check if hands have dropped
             self.frame_count_since_movement = 0  # Reset the frame count
+
+    def update_landmarks(self, detection_result):
+        landmark = detection_result.pose_landmarks.landmark if detection_result and detection_result.pose_landmarks else None
+        if landmark and len(landmark) > 16:
+            self.left_wrist_y15 = landmark[15].y
+            self.right_wrist_y16 = landmark[16].y
+        else:
+            self.left_wrist_y15 = None
+            self.right_wrist_y16 = None
+        return
+
     
     def countdown(self):
         # 3, 2, 1 countdown

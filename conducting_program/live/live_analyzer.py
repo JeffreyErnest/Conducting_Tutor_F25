@@ -22,15 +22,17 @@ def live_analyzer(camera_manager, media_pipe_declaration, pose, bpm_settings, li
                   break
             
             # Get landmark coordinates
-            x15, y15, x16, y16 = media_pipe_landmarks(detection_result)
-             
+            # landmarkings = media_pipe_landmarks(detection_result) # Get Landmarks
+            # if landmarkings:
+            #     x15, y15, x16, y16 = landmarkings # Check incase there aren't any
+
             # TODO: 
             # Damn will you look at that I did what I wanted to do crazy
 
             if live_start.state == "setup":
-                print("=== SETUP PHASE ===")
+                print("=== SETUP PHASE ===") # DEBUG
 
-                live_start.wait_for_start_movement(y15, y16)
+                live_start.wait_for_start_movement(detection_result) # Call check for start movement.
 
                 if show_frame(annotated_frame): # Display Frame
                     break # Exit loop, if returned True
@@ -38,7 +40,7 @@ def live_analyzer(camera_manager, media_pipe_declaration, pose, bpm_settings, li
                 continue # Continue to next frame
 
             elif live_start.state == "processing":
-                print("=== PROCESSING PHASE ===")
+                print("=== PROCESSING PHASE ===") # DEBUG
 
                 # TODO: 
                 # Look to see if ending motion is triggered if it is, end the program
