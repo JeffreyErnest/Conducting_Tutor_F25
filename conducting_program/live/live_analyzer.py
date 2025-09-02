@@ -22,7 +22,7 @@ def live_analyzer(camera_manager, media_pipe_declaration, pose):
                 break # If the frame wasn't captured we break out of the loop
             frame = cv2.flip(frame, 1) # Flip the frame on y axis. 
             rgb_frame = camera_manager.convert_to_rgb(frame) # Convert BGR to RGB (MediaPipe expects RGB)
-            results = media_pipe_declaration.process_pose_detection(media_pipe_declaration.pose, rgb_frame) # Detect pose landmarks
+            results = media_pipe_declaration.process_pose_detection(pose, rgb_frame) # Detect pose landmarks
             annotated_frame = media_pipe_declaration.draw_pose_landmarks(frame, results) # Draw landmarks on the frame
             
             # Display Frame
@@ -37,5 +37,5 @@ def live_analyzer(camera_manager, media_pipe_declaration, pose):
     finally:
         # Clean up
         camera_manager.cleanup()
-        media_pipe_declaration.close_pose_detection(media_pipe_declaration.pose)
+        media_pipe_declaration.close_pose_detection(pose)
         print("Pose detection closed")
