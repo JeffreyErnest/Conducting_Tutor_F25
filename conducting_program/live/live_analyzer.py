@@ -2,7 +2,7 @@
 
 import cv2
 
-def live_analyzer(camera_manager, media_pipe_declaration, pose, bpm_settings, live_start):
+def live_analyzer(camera_manager, media_pipe_declaration, pose, system_state):
 
     # Initialize camera
     if not camera_manager.initialize_camera():
@@ -29,17 +29,28 @@ def live_analyzer(camera_manager, media_pipe_declaration, pose, bpm_settings, li
             # TODO: 
             # Damn will you look at that I did what I wanted to do crazy
 
-            if live_start.state == "setup":
+            if system_state.state == "setup":
                 print("=== SETUP PHASE ===") # DEBUG
 
-                live_start.wait_for_start_movement(detection_result) # Call check for start movement.
+                system_state.wait_for_start_movement(detection_result) # Call check for start movement.
 
                 if show_frame(annotated_frame): # Display Frame
                     break # Exit loop, if returned True
 
                 continue # Continue to next frame
 
-            elif live_start.state == "processing":
+            elif system_state.state == "countdown":
+                print("=== COUNTDOWN PHASE ===")
+                
+                # Update countdown (this will print 3, 2, 1, GO!)
+                system_state.update_countdown()
+                
+                # Show frame with countdown overlay
+                if show_frame(annotated_frame):
+                    break
+                continue
+
+            elif system_state.state == "processing":
                 print("=== PROCESSING PHASE ===") # DEBUG
 
                 # TODO: 

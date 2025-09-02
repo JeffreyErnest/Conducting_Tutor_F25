@@ -3,7 +3,7 @@
 # as well have infomation on the body ouline
 # so people know how far to stand from the camera. 
 
-class LiveStart:
+class SystemState:
     def __init__(self):
         self.state = "setup" # "setup", "coundown", "processing"; System State
 
@@ -12,7 +12,6 @@ class LiveStart:
         self.right_wrist_y16 = None
 
         # wait_for_start_movement variables
-        self.processing_active = False
         self.current_start_frame = None
         self.previous_y_left = None
         self.previous_x_right = None
@@ -21,6 +20,10 @@ class LiveStart:
         self.frame_count_since_movement = 0
         self.slight_movement_threshold = .005 # TODO: some how make this dynamic
         self.movement_counter = 0
+
+        # Count down variables
+        self.countdown_value = 3 # 3 Seconds
+        self.countdown_frames = 0 # Track frames for countdown
 
 
     # Called to see if user is ready, and set settings
@@ -46,6 +49,7 @@ class LiveStart:
         # Show body outline overlay
         pass
     
+    # SETUP CODE PHASE
     def wait_for_start_movement(self, detection_result):
 
         self.update_landmarks(detection_result) # Update the landmarks
@@ -87,10 +91,25 @@ class LiveStart:
             self.right_wrist_y16 = None
         return
 
+    # COUNT DOWN PHASE CODE
+    def start_countdown(self):
+        self.state = "countdown" # Transition to countdown state
+        self.countdown_value = 3
+        self.countdown_frames = 0
+        print("Starting countdown...")
+
+    def update_countdown(self):
+        """Update countdown - call this every frame"""
+        if self.state == "countdown":
+            self.countdown_frames += 1
+            
+            if self.countdown_frames == 30: # Assuming 30 FPS, show each number for ~1 second (30 frames)
+                print(f"{self.countdown_value}")
+                self.countdown_value -= 1
+                self.countdown_frames = 0
+                
+                if self.countdown_value <= 0:
+                    print("GO!")
+                    self.state = "processing"
     
-    def countdown(self):
-        # 3, 2, 1 countdown
-        pass
-
-
    

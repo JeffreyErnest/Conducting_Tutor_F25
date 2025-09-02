@@ -3,7 +3,7 @@
 # save the video, etc...
 # As well as constants that are set by the user.
 
-# Setting that controls BPM
+# Setting that controls BPM TODO maybe use a config?
 class BPMSettings:
     def __init__(self):
         self.beats_per_minute = 0
