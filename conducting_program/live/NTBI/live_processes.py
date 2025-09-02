@@ -1,1 +1,0 @@
-# deals with what is happening when the program is live
