@@ -2,7 +2,7 @@
 
 import cv2
 
-def live_analyzer(camera_manager, media_pipe_declaration, pose, system_state):
+def live_analyzer(camera_manager, media_pipe_declaration, pose, system_state, pose_landmarks):
 
     # Initialize camera
     if not camera_manager.initialize_camera():
@@ -21,36 +21,32 @@ def live_analyzer(camera_manager, media_pipe_declaration, pose, system_state):
             if annotated_frame is None:
                   break
             
-            # Get landmark coordinates
-            # landmarkings = media_pipe_landmarks(detection_result) # Get Landmarks
-            # if landmarkings:
-            #     x15, y15, x16, y16 = landmarkings # Check incase there aren't any
+            # Update Landmarks
+            pose_landmarks.update_landmarks(detection_result)
 
-            # TODO: 
-            # Damn will you look at that I did what I wanted to do crazy
-
-            if system_state.state == "setup":
+            # System State Loop
+            if system_state.state == "setup": # Setup Phase
                 print("=== SETUP PHASE ===") # DEBUG
 
-                system_state.wait_for_start_movement(detection_result) # Call check for start movement.
+                system_state.wait_for_start_movement(pose_landmarks) # Call check for start movement.
 
                 if show_frame(annotated_frame): # Display Frame
                     break # Exit loop, if returned True
 
                 continue # Continue to next frame
 
-            elif system_state.state == "countdown":
-                print("=== COUNTDOWN PHASE ===")
+            elif system_state.state == "countdown": # Countdown Phase
+                print("=== COUNTDOWN PHASE ===") # DEBUG
                 
-                # Update countdown (this will print 3, 2, 1, GO!)
-                system_state.update_countdown()
+                # Update countdown (this will print 3, 2, 1, go)
+                # system_state.update_countdown()
                 
                 # Show frame with countdown overlay
                 if show_frame(annotated_frame):
                     break
                 continue
 
-            elif system_state.state == "processing":
+            elif system_state.state == "processing": # Processing Phase
                 print("=== PROCESSING PHASE ===") # DEBUG
 
                 # TODO: 
@@ -87,18 +83,3 @@ def setup_frame(camera_manager, media_pipe_declaration, pose):
     results = media_pipe_declaration.process_pose_detection(pose, rgb_frame) # Detect pose landmarks
     annotated_frame = media_pipe_declaration.draw_pose_landmarks(frame, results) # Draw landmarks on the frame
     return annotated_frame, results # 'annotated_image_bgr' is for display, 'results' contains the actualy data
-
-# Method to get landmarks
-def media_pipe_landmarks(detection_result):
-    if detection_result and detection_result.pose_landmarks:
-        landmarks = detection_result.pose_landmarks # MediaPipe pose landmarks are accessed directly, not as a list
-
-        # Check if we have enough landmarks and they exist
-        if len(landmarks.landmark) > 16:
-            x15 = landmarks.landmark[15].x # Left wrist X axis
-            y15 = landmarks.landmark[15].y # Left wrist Y axis
-            x16 = landmarks.landmark[16].x # Right wrist X axis
-            y16 = landmarks.landmark[16].y # Right wrist Y axis
-            return x15, y15, x16, y16
-   
-    return None # Return None if no landmarks detected

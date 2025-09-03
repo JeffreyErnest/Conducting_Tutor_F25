@@ -3,3 +3,5 @@ This files is to help maintain and write down ideas
 -Use config to store time sig and BPM
 -Might need to have a program side clock outside of fps
     Because the live frames seem to be all over the place.
+-Combind the stop functions to system_state file?
+-Need to add graphics, body out line, count down, etc..
