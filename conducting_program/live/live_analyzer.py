@@ -1,6 +1,7 @@
 # deals with what is happening when the program is live
 
 import cv2
+from live.system_state import State
 
 def live_analyzer(camera_manager, media_pipe_declaration, pose, system_state, pose_landmarks):
 
@@ -23,50 +24,17 @@ def live_analyzer(camera_manager, media_pipe_declaration, pose, system_state, po
             
             pose_landmarks.update_landmarks(detection_result) # Update Landmarks
 
-            # System State Loop
-            if system_state.state == "setup": # Setup Phase
-                print("=== SETUP PHASE ===") # DEBUG
-
-                system_state.wait_for_start_movement(pose_landmarks) # Call check for start movement.
-
-                if show_frame(annotated_frame): # Display Frame
-                    break # Exit loop, if returned True
-
-                continue # Continue to next frame
-
-            elif system_state.state == "countdown": # Countdown Phase
-                print("=== COUNTDOWN PHASE ===") # DEBUG
-                
-                # Update countdown (this will print 3, 2, 1, go)
-                # system_state.update_countdown()
-                
-                # Show frame with countdown overlay
-                if show_frame(annotated_frame):
-                    break
-                continue
-
-            elif system_state.state == "processing": # Processing Phase
-                print("=== PROCESSING PHASE ===") # DEBUG
-
-                # TODO: 
-                # process the frame
-                # Called methods for processing the frame
-                    # such as swaying_detector, mirror_detector, etc..
-                # Look to see if ending motion is triggered if it is, end the program
-                
-                if show_frame(annotated_frame):  # Display Frame
-                    break # Exit loop, if returned True
+            # Get current state and call its main method
+            current_state = system_state.get_current_state()
+            next_state = current_state.main(pose_landmarks)
             
-            elif system_state.state == "ending": # Ending Phase
-                print("=== ENDING PHASE ===") # DEBUG
+            # Check if we need to change states
+            if next_state != current_state.get_state_name():
+                system_state.change_state(next_state)
 
-                # TODO: 
-                # if ending motion is triggered, end the program, save video, pass to feedback, etc..
-                
-                if show_frame(annotated_frame):
-                    break
-                continue
-
+            # Display frame
+            if show_frame(annotated_frame):
+                break
                     
     except KeyboardInterrupt:
         print("\nStopping pose detection...")
