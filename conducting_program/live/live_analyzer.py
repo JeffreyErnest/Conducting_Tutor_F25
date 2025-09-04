@@ -21,8 +21,7 @@ def live_analyzer(camera_manager, media_pipe_declaration, pose, system_state, po
             if annotated_frame is None:
                   break
             
-            # Update Landmarks
-            pose_landmarks.update_landmarks(detection_result)
+            pose_landmarks.update_landmarks(detection_result) # Update Landmarks
 
             # System State Loop
             if system_state.state == "setup": # Setup Phase
@@ -50,10 +49,23 @@ def live_analyzer(camera_manager, media_pipe_declaration, pose, system_state, po
                 print("=== PROCESSING PHASE ===") # DEBUG
 
                 # TODO: 
+                # process the frame
+                # Called methods for processing the frame
+                    # such as swaying_detector, mirror_detector, etc..
                 # Look to see if ending motion is triggered if it is, end the program
                 
                 if show_frame(annotated_frame):  # Display Frame
                     break # Exit loop, if returned True
+            
+            elif system_state.state == "ending": # Ending Phase
+                print("=== ENDING PHASE ===") # DEBUG
+
+                # TODO: 
+                # if ending motion is triggered, end the program, save video, pass to feedback, etc..
+                
+                if show_frame(annotated_frame):
+                    break
+                continue
 
                     
     except KeyboardInterrupt:

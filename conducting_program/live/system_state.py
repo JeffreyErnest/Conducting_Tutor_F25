@@ -7,20 +7,14 @@ class SystemState:
     def __init__(self):
         self.state = "setup" # "setup", "coundown", "processing"; System State
 
-        # Hand Variables
-        self.left_wrist_y15 = None 
-        self.right_wrist_y16 = None
-
         # wait_for_start_movement variables
-        self.current_start_frame = None
+        self.left_wrist_y15 = None
+        self.right_wrist_y16 = None
         self.previous_y_left = None
-        self.previous_x_right = None
-        self.previous_x_left = None
         self.previous_y_right = None
         self.processing_active = False
         self.frame_count_since_movement = 0
-        self.slight_movement_threshold = .005 # TODO: some how make this dynamic
-        self.movement_counter = 0
+        self.significant_movement_threshold = .1 # TODO: some how make this dynamic
 
         # Count down variables
         self.countdown_value = 3 # 3 Seconds
@@ -36,15 +30,13 @@ class SystemState:
             self.previous_y_left = self.left_wrist_y15
             self.previous_y_right = self.right_wrist_y16
 
-        significant_movement_threshold = 0.1  
-
         # Check for significant upward movement for both left and right
-        left_moved_up = self.left_wrist_y15 < self.previous_y_left - significant_movement_threshold
-        right_moved_up = self.right_wrist_y16 < self.previous_y_right - significant_movement_threshold
+        left_moved_up = self.left_wrist_y15 < self.previous_y_left - self.significant_movement_threshold
+        right_moved_up = self.right_wrist_y16 < self.previous_y_right - self.significant_movement_threshold
         
         # Check for significant downward movement for both left and right
-        left_dropped_down = self.left_wrist_y15 > self.previous_y_left + significant_movement_threshold
-        right_dropped_down = self.right_wrist_y16 > self.previous_y_right + significant_movement_threshold
+        left_dropped_down = self.left_wrist_y15 > self.previous_y_left + self.significant_movement_threshold
+        right_dropped_down = self.right_wrist_y16 > self.previous_y_right + self.significant_movement_threshold
 
         # Determine if both hands are up
         both_hands_up = (left_moved_up and right_moved_up) and not (left_dropped_down or right_dropped_down)
@@ -53,32 +45,31 @@ class SystemState:
             if self.frame_count_since_movement < 30: # Requires a full second (change to frame of video, later)
                self.frame_count_since_movement += 1  # Increment frame count
             else:
-                print ("Started Processing")
+                print ("Starting Countdown")
                 self.processing_active = True
-                self.state = "processing" # Set state to Processing
+                self.state = "countdown" # Set state to Processing
         elif left_dropped_down or right_dropped_down:  # Check if hands have dropped
             self.frame_count_since_movement = 0  # Reset the frame count
 
 
-    # COUNT DOWN PHASE CODE
+    # COUNTDOWN PHASE CODE
     def start_countdown(self):
-        self.state = "countdown" # Transition to countdown state
-        self.countdown_value = 3
-        self.countdown_frames = 0
-        print("Starting countdown...")
+        self.countdown_value = 3 # 3 Seconds
+        self.countdown_frames = 0 # Track frames for countdown
+        print("Starting countdown...") # DEBUG
 
     def update_countdown(self):
         """Update countdown - call this every frame"""
         if self.state == "countdown":
             self.countdown_frames += 1
             
-            if self.countdown_frames == 30: # Assuming 30 FPS, show each number for ~1 second (30 frames)
+            if self.countdown_frames == 30: # Assuming 30 FPS, show each number for ~1 second (30 frames) TODO: make this dynamic
                 print(f"{self.countdown_value}")
                 self.countdown_value -= 1
                 self.countdown_frames = 0
                 
                 if self.countdown_value <= 0:
-                    print("GO!")
+                    print("Go")
                     self.state = "processing"
     
    
