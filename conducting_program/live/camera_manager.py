@@ -1,9 +1,12 @@
 import cv2
+import time
 
 class CameraManager:
     def __init__(self, camera_index=0):
         self.camera_index = camera_index
         self.cap = None
+        self.prev_frame_time = 0
+        self.new_frame_time = 0
         
     def initialize_camera(self):
         # Initialize the camera
@@ -31,8 +34,16 @@ class CameraManager:
         # Convert BGR frame to RGB (MediaPipe expects RGB)
         return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     
+    def calculate_fps(self):
+        # Calculate current FPS based on frame timing
+        self.new_frame_time = time.time()
+        fps = 1/(self.new_frame_time - self.prev_frame_time) if self.prev_frame_time > 0 else 0
+        self.prev_frame_time = self.new_frame_time
+        return int(fps)
+    
     def cleanup(self):
         # Clean up camera resources
         if self.cap is not None:
             self.cap.release()
         cv2.destroyAllWindows()
+    

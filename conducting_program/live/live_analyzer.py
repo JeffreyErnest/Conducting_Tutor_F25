@@ -3,11 +3,14 @@
 import cv2
 from live.system_state import State
 
-def live_analyzer(camera_manager, media_pipe_declaration, pose, system_state, pose_landmarks):
+def live_analyzer(camera_manager, media_pipe_declaration, pose, system_state, pose_landmarks, clock_manager):
 
     # Initialize camera
     if not camera_manager.initialize_camera():
         return # Error handling, handled in camera_manager
+    
+    # Start the program clock
+    clock_manager.start_program_clock()
     
     # Debug Print Statments
     print("Starting live pose detection...")
@@ -22,15 +25,28 @@ def live_analyzer(camera_manager, media_pipe_declaration, pose, system_state, po
             if annotated_frame is None:
                   break
             
+            # Calculate and display FPS and timing info
+            fps = camera_manager.calculate_fps()
+            program_time = clock_manager.get_program_elapsed_time()
+            session_time = clock_manager.get_session_elapsed_time()
+            
+            # Display timing information on frame
+            cv2.putText(annotated_frame, f'FPS: {fps}', (10, 30), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            cv2.putText(annotated_frame, f'Program: {clock_manager.format_time(program_time)}', (10, 70), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+            cv2.putText(annotated_frame, f'Session: {clock_manager.format_time(session_time)}', (10, 110), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+            
             pose_landmarks.update_landmarks(detection_result) # Update Landmarks
 
             # Get current state and call its main method
             current_state = system_state.get_current_state()
-            next_state = current_state.main(pose_landmarks)
+            next_state = current_state.main(pose_landmarks, clock_manager)
             
             # Check if we need to change states
             if next_state != current_state.get_state_name():
-                system_state.change_state(next_state)
+                system_state.change_state(next_state, clock_manager)
 
             # Display frame
             if show_frame(annotated_frame):
