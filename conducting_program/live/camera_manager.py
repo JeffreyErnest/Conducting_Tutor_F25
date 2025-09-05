@@ -28,7 +28,7 @@ class CameraManager:
         return True, frame
     
     def convert_to_rgb(self, frame):
-        # Convert BGR frame to RGB (MediaPipe expects RGB
+        # Convert BGR frame to RGB (MediaPipe expects RGB)
         return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     
     def cleanup(self):

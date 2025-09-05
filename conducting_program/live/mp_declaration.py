@@ -39,7 +39,7 @@ class mediaPipeDeclaration:
 
     @staticmethod
     def initialize_pose_detection():
-        """Initialize MediaPipe Pose detection"""
+        #Initialize MediaPipe Pose detection
         mp_pose = mp.solutions.pose
         pose = mp_pose.Pose(
             min_detection_confidence=0.5,
@@ -49,12 +49,12 @@ class mediaPipeDeclaration:
 
     @staticmethod
     def process_pose_detection(pose, rgb_frame):
-        """Process pose detection on a frame"""
+        # Process pose detection on a frame
         return pose.process(rgb_frame)
 
     @staticmethod
     def draw_pose_landmarks(frame, results):
-        """Draw pose landmarks on the frame"""
+        # Draw pose landmarks on the frame
         if results.pose_landmarks:
             mp.solutions.drawing_utils.draw_landmarks(
                 frame,

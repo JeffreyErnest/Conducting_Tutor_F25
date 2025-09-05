@@ -5,7 +5,7 @@
 
 from enum import Enum
 
-class State(Enum):
+class State(Enum): # Set Enum values
     SETUP = "setup"
     COUNTDOWN = "countdown"
     PROCESSING = "processing"
