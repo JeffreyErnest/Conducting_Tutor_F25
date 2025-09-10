@@ -1,5 +1,4 @@
 # main.py - This files carries the logic for the live version of the program
-
 from live.mp_declaration import mediaPipeDeclaration
 from live.camera_manager import CameraManager
 from live.live_analyzer import live_analyzer
