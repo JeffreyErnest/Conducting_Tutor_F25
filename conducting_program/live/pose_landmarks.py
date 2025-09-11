@@ -32,7 +32,7 @@ class PoseLandmarks:
             return (None, None)  # Return tuple when no data
         return self.right_wrist_16
     
-    def calculate_midpoint(self, current_time):
+    def calculate_midpoint(self):
         if self.left_shoulder_12 and self.right_shoulder_11:
             self.midpoint_x_axis = abs(self.left_shoulder_12[0] - self.right_shoulder_11[0]) * 0.5 + self.left_shoulder_12[0]
     

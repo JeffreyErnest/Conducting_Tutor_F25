@@ -18,6 +18,31 @@ class SystemState:
     def get_current_state(self):
         return self.current_state
     
+    def is_swaying(self):
+        # Defer to processing state's sway flag if applicable
+        try:
+            return isinstance(self.current_state, ProcessingState) and self.current_state.is_swaying()
+        except NameError:
+            return False
+
+    def get_sway_thresholds(self):
+        # Defer to processing state's thresholds if applicable
+        try:
+            if isinstance(self.current_state, ProcessingState):
+                return self.current_state.get_sway_thresholds()
+        except NameError:
+            pass
+        return None, None
+
+    def get_reference_midpoint(self):
+        # Expose stable/reference midpoint when in processing
+        try:
+            if isinstance(self.current_state, ProcessingState):
+                return self.current_state.get_reference_midpoint()
+        except NameError:
+            pass
+        return None
+
     def change_state(self, new_state, clock_manager=None):
         if new_state == State.COUNTDOWN.value:
             self.current_state = CountdownState()
@@ -114,17 +139,24 @@ class CountdownState:
         
         return State.COUNTDOWN.value  # Use enum value
 
+from shared.sway import SwayDetection
+
 class ProcessingState:
     def __init__(self):
-        # Put any saving data between frames here
-        self.original_midpoint = None  # Store the original midpoint for comparison
+        self.reference_midpoint = None  # Stable reference midpoint updated periodically
         self.last_midpoint_checked = None  # Track when midpoint was last checked
         self.midpoint_stable_count = 0  # Count how many times midpoint has been stable
+        self.live_midpoint = None
+        self.sway = SwayDetection() # Create an instance of sway.
+
         print("=== PROCESSING PHASE ===")
 
-    def get_state_name(self):
-        return State.PROCESSING.value
+    # Midpoint Functions -------------------------------------------
 
+    def get_reference_midpoint(self):
+        return self.reference_midpoint
+    
+    # Check to see if 3 seconds have passed
     def should_update_midpoint(self, current_time, interval_seconds=3.0):
         # Check if enough time has passed to update the midpoint
         if self.last_midpoint_checked is None:
@@ -132,7 +164,12 @@ class ProcessingState:
             return True  # First time, always update
 
         return (current_time - self.last_midpoint_checked) >= interval_seconds
-
+    
+    def update_current_midpoint(self, pose_landmarks):
+        if pose_landmarks.left_shoulder_12 and pose_landmarks.right_shoulder_11:
+            pose_landmarks.calculate_midpoint() 
+            self.live_midpoint = pose_landmarks.get_midpoint()
+    
     # Check to see if we need to update the midpoint
     def update_midpoint_check(self, pose_landmarks, clock_manager):
         current_time = clock_manager.get_current_timestamp() # Get current time
@@ -140,49 +177,74 @@ class ProcessingState:
         # Check if it's time to update (every 3 seconds)
         if not self.should_update_midpoint(current_time, 3.0):
             return False  # Not time to check yet
-            
-        # Calculate new midpoint
-        if pose_landmarks.left_shoulder_12 and pose_landmarks.right_shoulder_11:
-            new_midpoint = abs(pose_landmarks.left_shoulder_12[0] - pose_landmarks.right_shoulder_11[0]) * 0.5 + pose_landmarks.left_shoulder_12[0]
-            
-            # If this is the first time, set it as original
-            if self.original_midpoint is None:
-                self.original_midpoint = new_midpoint
-                pose_landmarks.midpoint_x_axis = new_midpoint
-                self.last_midpoint_checked = current_time
-                print("Original midpoint set") # DEBUG
-                return True
-            
-            # Check if new midpoint is similar to current one
-            if abs(new_midpoint - pose_landmarks.midpoint_x_axis) > 0.05:
-                self.midpoint_stable_count += 1
-                if self.midpoint_stable_count >= 2:  # Stable for 2 consecutive checks
-                    pose_landmarks.midpoint_x_axis = new_midpoint
-                    self.original_midpoint = new_midpoint  # Update original to new stable position
-                    self.last_midpoint_checked = current_time
-                    self.midpoint_stable_count = 0
-                    print("Midpoint updated - stable, new original set") # DEBUG
-                    return True
-            else:
-                # Check if new midpoint is similar to original
-                if abs(new_midpoint - self.original_midpoint) < 0.05:
-                    pose_landmarks.midpoint_x_axis = new_midpoint
-                    self.last_midpoint_checked = current_time
-                    self.midpoint_stable_count = 0
-                    print("Midpoint updated - back to original") # DEBUG
-                    return True
-                else:
-                    # Reset stability count if midpoint is too different
-                    self.midpoint_stable_count = 0
-            
+
+        # 3 seconds have passed update refrence midpoint; require a valid live midpoint
+        if self.live_midpoint is None:
             self.last_midpoint_checked = current_time
+            return False
+
+        # If this is the first time, set the reference midpoint
+        if self.reference_midpoint is None:
+            self.reference_midpoint = self.live_midpoint
+            self.last_midpoint_checked = current_time
+            print("Reference midpoint set") # DEBUG
+            return True
+
+        # Delegate the evaluation logic to a dedicated method
+        updated = self.evaluate_reference_update(current_time)
+        self.last_midpoint_checked = current_time
+        return updated
+
+    def evaluate_reference_update(self, current_time):
+        # Compare live directly to reference
+        midpoint_difference = abs(self.live_midpoint - self.reference_midpoint)
+
+        # Micro-adjust when close to reference (smooth small drift)
+        if midpoint_difference <= 0.02:
+            self.reference_midpoint = self.live_midpoint
+            self.midpoint_stable_count = 0
+            print("Reference midpoint micro-adjusted") # DEBUG
+            return True
+
+        # Large movement: require stability across 2 checks (6s total) before updating
+        if midpoint_difference > 0.05:
+            self.midpoint_stable_count += 1
+            if self.midpoint_stable_count >= 2:
+                self.reference_midpoint = self.live_midpoint
+                self.midpoint_stable_count = 0
+                print("Reference midpoint updated (stable large move)") # DEBUG
+                return True
+        else:
+            # Small-to-medium movement: do not update reference; reset stability counter
+            self.midpoint_stable_count = 0
         return False
 
-    def main(self, pose_landmarks, clock_manager):
-        # TODO: explore treading so we aren't waiting on function such as the midpoint check
+    
+    # Swaying Functions --------------------------------------------
 
-        # Check to see if we update midpoint, if we can ppdate midpoint
+    def is_swaying(self):
+        return self.sway.get_sway_flag()
+
+        # Maybe remove later
+    def get_sway_thresholds(self):
+        return self.sway.get_threshold_left(), self.sway.get_threshold_right()
+
+
+    # Processing State Functions -----------------------------------
+
+    def get_state_name(self):
+        return State.PROCESSING.value
+
+    def main(self, pose_landmarks, clock_manager):
+        # Get current frame midpoint
+        self.update_current_midpoint(pose_landmarks)
+
+        # Check to see if 3 seconds have passed, it it has update original midpoint
         self.update_midpoint_check(pose_landmarks, clock_manager)
+
+        # Call Sway function with reference (stable) and live (per-frame) midpoints
+        if self.reference_midpoint is not None and self.live_midpoint is not None:
+            self.sway.main(self.reference_midpoint, self.live_midpoint)
 
         return State.PROCESSING.value  # Use enum value
 

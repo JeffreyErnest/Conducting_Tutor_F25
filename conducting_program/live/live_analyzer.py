@@ -22,7 +22,7 @@ def setup_frame(camera_manager, media_pipe_declaration, pose):
     annotated_frame = media_pipe_declaration.draw_pose_landmarks(frame, results) # Draw landmarks on the frame
     return annotated_frame, results # 'annotated_image_bgr' is for display, 'results' contains the actualy data
 
-def draw_midpoint_line(pose_landmarks, annotated_frame):
+def draw_midpoint_live_line(pose_landmarks, annotated_frame):
     # Draw midpoint line if midpoint is available
     midpoint = pose_landmarks.get_midpoint()
     if midpoint is not None:
@@ -31,21 +31,50 @@ def draw_midpoint_line(pose_landmarks, annotated_frame):
         frame_width = annotated_frame.shape[1]
         
         # Convert midpoint from normalized coordinates (0-1) to pixel coordinates
-        midpoint_pixel = int(midpoint * frame_width)
+        midpoint_normalized = int(midpoint * frame_width)
         
         # Draw line from top to bottom of frame
-        cv2.line(annotated_frame, (midpoint_pixel, 0), (midpoint_pixel, frame_height), (225, 255, 255), 2)
+        cv2.line(annotated_frame, (midpoint_normalized, 0), (midpoint_normalized, frame_height), (225, 255, 255), 2)
         
         # Debug: Show midpoint value
-        cv2.putText(annotated_frame, f'Midpoint: {midpoint:.3f}', (10, 150), 
+        cv2.putText(annotated_frame, f'Live Midpoint: {midpoint:.3f}', (10, 150), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
     else:
         # Debug: Show why midpoint is None
         left_shoulder = pose_landmarks.left_shoulder_12
         right_shoulder = pose_landmarks.right_shoulder_11
         cv2.putText(annotated_frame, f'L:{left_shoulder is not None} R:{right_shoulder is not None}', (10, 150), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1) # Has 3 seconds elapsed? if so update the midpoint
-    # pose_landmarks.calculate_midpoint(current_time)  # Update Midpoint
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+
+def draw_midpoint_threshold_lines(system_state, annotated_frame):
+
+    left, right = system_state.get_sway_thresholds()
+
+    if left is not None and right is not None:
+        # Get frame dimensions for full height line
+        frame_height = annotated_frame.shape[0]
+        frame_width = annotated_frame.shape[1]
+        
+        left_normalized = int(left * frame_width)
+        right_normalized = int(right * frame_width)
+        
+        # Draw line from top to bottom of frame
+        cv2.line(annotated_frame, (left_normalized, 0), (left_normalized, frame_height), (0, 0, 225), 2)
+        cv2.line(annotated_frame, (right_normalized, 0), (right_normalized, frame_height), (0, 0, 225), 2)
+        
+
+def draw_midpoint_line(system_state, annotated_frame):
+
+    reference_midpoint = system_state.get_reference_midpoint()
+    if reference_midpoint is None:
+        return
+
+    frame_height = annotated_frame.shape[0] # TODO: I do this calculation 3 times, maybe add function for it
+    frame_width = annotated_frame.shape[1]
+    reference_normalized = int(reference_midpoint * frame_width)
+    cv2.line(annotated_frame, (reference_normalized, 0), (reference_normalized, frame_height), (255, 255, 0), 2)
+    cv2.putText(annotated_frame, f'Ref Midpoint: {reference_midpoint:.3f}', (10, 170), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
 
 def live_analyzer(camera_manager, media_pipe_declaration, pose, system_state, pose_landmarks, clock_manager):
 
@@ -84,11 +113,17 @@ def live_analyzer(camera_manager, media_pipe_declaration, pose, system_state, po
             
             # Landmark Information
             pose_landmarks.update_landmarks(detection_result) # Update Landmarks
-            draw_midpoint_line(pose_landmarks, annotated_frame)
 
             # Get current state and call its main method
             current_state = system_state.get_current_state()
             next_state = current_state.main(pose_landmarks, clock_manager)
+
+            if current_state.get_state_name() == "processing":
+                if system_state.is_swaying():
+                    cv2.putText(annotated_frame, "Swaying", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 2)
+                draw_midpoint_live_line(pose_landmarks, annotated_frame) # Draws live midpoint line
+                draw_midpoint_threshold_lines(system_state, annotated_frame) # Draws refrence midpoint thresholds
+                draw_midpoint_line(system_state, annotated_frame) # Draws refrance midpoint line
             
             # Check if we need to change states
             if next_state != current_state.get_state_name():
