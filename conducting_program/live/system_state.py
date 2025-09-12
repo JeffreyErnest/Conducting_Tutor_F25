@@ -43,6 +43,13 @@ class SystemState:
             pass
         return None
 
+    def is_mirroring(self):
+        # Defer to processing state's sway flag if applicable
+        try:
+            return isinstance(self.current_state, ProcessingState) and self.current_state.is_mirroring()
+        except NameError:
+            return False
+
     def change_state(self, new_state, clock_manager=None):
         if new_state == State.COUNTDOWN.value:
             self.current_state = CountdownState()
@@ -140,6 +147,7 @@ class CountdownState:
         return State.COUNTDOWN.value  # Use enum value
 
 from shared.sway import SwayDetection
+from shared.mirror import MirrorDetection
 
 class ProcessingState:
     def __init__(self):
@@ -147,7 +155,8 @@ class ProcessingState:
         self.last_midpoint_checked = None  # Track when midpoint was last checked
         self.midpoint_stable_count = 0  # Count how many times midpoint has been stable
         self.live_midpoint = None
-        self.sway = SwayDetection() # Create an instance of sway.
+        self.sway = SwayDetection() # Create an instance of sway
+        self.mirror = MirrorDetection() # Create an instance of mirror
 
         print("=== PROCESSING PHASE ===")
 
@@ -229,6 +238,10 @@ class ProcessingState:
     def get_sway_thresholds(self):
         return self.sway.get_threshold_left(), self.sway.get_threshold_right()
 
+    # Mirror Functions --------------------------------------------
+
+    def is_mirroring(self):
+        return self.mirror.get_mirroring_flag()
 
     # Processing State Functions -----------------------------------
 
@@ -245,6 +258,8 @@ class ProcessingState:
         # Call Sway function with reference (stable) and live (per-frame) midpoints
         if self.reference_midpoint is not None and self.live_midpoint is not None:
             self.sway.main(self.reference_midpoint, self.live_midpoint)
+
+        self.mirror.main(pose_landmarks, clock_manager, self.live_midpoint)
 
         return State.PROCESSING.value  # Use enum value
 

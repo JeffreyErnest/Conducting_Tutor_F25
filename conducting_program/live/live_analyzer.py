@@ -124,7 +124,11 @@ def live_analyzer(camera_manager, media_pipe_declaration, pose, system_state, po
                 draw_midpoint_live_line(pose_landmarks, annotated_frame) # Draws live midpoint line
                 draw_midpoint_threshold_lines(system_state, annotated_frame) # Draws refrence midpoint thresholds
                 draw_midpoint_line(system_state, annotated_frame) # Draws refrance midpoint line
-            
+
+                if system_state.is_mirroring():
+                    cv2.putText(annotated_frame, "Mirroring", (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
+
+                    
             # Check if we need to change states
             if next_state != current_state.get_state_name():
                 system_state.change_state(next_state, clock_manager)
