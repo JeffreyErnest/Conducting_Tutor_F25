@@ -4,6 +4,7 @@
 # so people know how far to stand from the camera. 
 
 from enum import Enum
+import threading
 
 class State(Enum): # Set Enum values
     SETUP = "setup"
@@ -249,17 +250,33 @@ class ProcessingState:
         return State.PROCESSING.value
 
     def main(self, pose_landmarks, clock_manager):
-        # Get current frame midpoint
-        self.update_current_midpoint(pose_landmarks)
+
+        # Initialize Threads
+        midpoint_thread = threading.Thread(target=self.update_current_midpoint, args=(pose_landmarks,))
 
         # Check to see if 3 seconds have passed, it it has update original midpoint
-        self.update_midpoint_check(pose_landmarks, clock_manager)
+        update_midpoint = threading.Thread(target=self.update_midpoint_check, args=(pose_landmarks, clock_manager))
 
-        # Call Sway function with reference (stable) and live (per-frame) midpoints
-        if self.reference_midpoint is not None and self.live_midpoint is not None:
-            self.sway.main(self.reference_midpoint, self.live_midpoint)
+        # TODO: 
+        # Add the no midpoint check here or in file, think about this in the future not now.
+        sway_thread = threading.Thread(target=self.sway.main, args=(self.reference_midpoint, self.live_midpoint))
 
-        self.mirror.main(pose_landmarks, clock_manager, self.live_midpoint)
+        mirror_thread = threading.Thread(target=self.mirror.main, args=(pose_landmarks, clock_manager, self.live_midpoint))
+
+
+        # Thread Calls
+        midpoint_thread.start() # Update midpoint
+        midpoint_thread.join() # Midpoint was updated
+
+        update_midpoint.start()
+        sway_thread.start()
+        mirror_thread.start() 
+
+        # Join threads before returning
+        sway_thread.join()
+        mirror_thread.join()
+
+        print("All threads done next cycle")
 
         return State.PROCESSING.value  # Use enum value
 
