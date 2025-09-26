@@ -51,11 +51,11 @@ class SystemState:
         except NameError:
             return False
 
-    def change_state(self, new_state, clock_manager=None):
+    def change_state(self, new_state, clock_manager=None, bpm=0):
         if new_state == State.COUNTDOWN.value:
             self.current_state = CountdownState()
         elif new_state == State.PROCESSING.value:
-            self.current_state = ProcessingState()
+            self.current_state = ProcessingState(bpm, clock_manager)
             clock_manager.start_session_clock()  # Start session timing for processing
         elif new_state == State.ENDING.value:
             self.current_state = EndingState()
@@ -149,15 +149,19 @@ class CountdownState:
 
 from shared.sway import SwayDetection
 from shared.mirror import MirrorDetection
+from shared.sounds import Metronome
 
 class ProcessingState:
-    def __init__(self):
+    def __init__(self, bpm, clock_manager):
         self.reference_midpoint = None  # Stable reference midpoint updated periodically
         self.last_midpoint_checked = None  # Track when midpoint was last checked
         self.midpoint_stable_count = 0  # Count how many times midpoint has been stable
         self.live_midpoint = None
         self.sway = SwayDetection() # Create an instance of sway
         self.mirror = MirrorDetection() # Create an instance of mirror
+
+        self.metronome = Metronome(bpm, clock_manager)
+        self.metronome_thread = None
 
         print("=== PROCESSING PHASE ===")
 
@@ -244,12 +248,25 @@ class ProcessingState:
     def is_mirroring(self):
         return self.mirror.get_mirroring_flag()
 
+    # Sound Functions --------------------------------------------
+
+
+    def play_metronome_sound(self): 
+        play_metronome()
+
+    def _start_metronome_thread(self):
+        if self.metronome_thread is None or not self.metronome_thread.is_alive():
+            self.metronome_thread = threading.Thread(target=self.metronome.play_metronome_continuous, daemon=True)
+            self.metronome_thread.start()
+
     # Processing State Functions -----------------------------------
 
     def get_state_name(self):
         return State.PROCESSING.value
 
     def main(self, pose_landmarks, clock_manager):
+
+        self._start_metronome_thread() # Start metronome thread when processing begins
 
         # Initialize Threads
         midpoint_thread = threading.Thread(target=self.update_current_midpoint, args=(pose_landmarks,))
@@ -263,12 +280,13 @@ class ProcessingState:
 
         mirror_thread = threading.Thread(target=self.mirror.main, args=(pose_landmarks, clock_manager, self.live_midpoint))
 
-
         # Thread Calls
         midpoint_thread.start() # Update midpoint
         midpoint_thread.join() # Midpoint was updated
 
         update_midpoint.start()
+        update_midpoint.join() # Midpoint was updated
+
         sway_thread.start()
         mirror_thread.start() 
 

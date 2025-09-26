@@ -76,7 +76,7 @@ def draw_midpoint_line(system_state, annotated_frame):
     cv2.putText(annotated_frame, f'Ref Midpoint: {reference_midpoint:.3f}', (10, 170), 
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
 
-def live_analyzer(camera_manager, media_pipe_declaration, pose, system_state, pose_landmarks, clock_manager):
+def live_analyzer(camera_manager, media_pipe_declaration, pose, system_state, pose_landmarks, clock_manager, bpm_settings):
 
     # Initialize camera
     if not camera_manager.initialize_camera():
@@ -131,7 +131,7 @@ def live_analyzer(camera_manager, media_pipe_declaration, pose, system_state, po
                     
             # Check if we need to change states
             if next_state != current_state.get_state_name():
-                system_state.change_state(next_state, clock_manager)
+                system_state.change_state(next_state, clock_manager, bpm_settings.get_beats_per_minute())
 
             # Display frame
             if show_frame(annotated_frame):
