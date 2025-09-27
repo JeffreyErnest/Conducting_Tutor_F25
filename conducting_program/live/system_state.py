@@ -337,26 +337,38 @@ class ProcessingState:
     def get_state_name(self):
         return State.PROCESSING.value
 
+    def _setup_bpm_timing(self):
+        """Setup BPM timing calculations and start beat timing thread."""
+        # BPM calculations are already done in __init__, but ensure timing is ready
+        self._start_beat_timing_thread()
+        print("BPM timing setup complete")
+
     def main(self, pose_landmarks, clock_manager):
         """Main processing loop for the conducting analysis."""
-        self._start_beat_timing_thread() # Start centralized beat timing thread
 
-        # Initialize Threads
+        # Setup / Foundational methods
+        bpm_thread = threading.Thread(target=self._setup_bpm_timing)
         midpoint_thread = threading.Thread(target=self.update_current_midpoint, args=(pose_landmarks,))
+        
+        # Start foundational threads
+        bpm_thread.start()
+        midpoint_thread.start()
+
+        # Wait for foundational threads to complete
+        bpm_thread.join()  # Wait for BPM timing to be ready
+        midpoint_thread.join()  # Wait for midpoint to be calculated
+
+        # Execute dependent threads in parallel
         update_midpoint = threading.Thread(target=self.update_midpoint_check, args=(pose_landmarks, clock_manager))
         sway_thread = threading.Thread(target=self.sway.main, args=(self.reference_midpoint, self.live_midpoint))
         mirror_thread = threading.Thread(target=self.mirror.main, args=(pose_landmarks, clock_manager, self.live_midpoint))
-
-        # Execute threads
-        midpoint_thread.start() # Update midpoint
         
-        # Midpoint Reliant Threads
-        midpoint_thread.join() # Join midpoint thread before midpoint reliant methods
+        # Start dependent threads
         update_midpoint.start()
         sway_thread.start()
-        mirror_thread.start() 
+        mirror_thread.start()
 
-        # Join threads before returning
+        # Join all dependent threads
         update_midpoint.join()
         sway_thread.join()
         mirror_thread.join()
