@@ -1,7 +1,7 @@
 # main.py - This files carries the logic for the live version of the program
 from live.mp_declaration import mediaPipeDeclaration
 from live.camera_manager import CameraManager
-from live.live_analyzer import live_analyzer
+from live.live_display import processing_loop
 from live.settings import BPMSettings
 from live.system_state import SystemState
 from live.pose_landmarks import PoseLandmarks
@@ -22,4 +22,4 @@ def live_main():
     print(bpm_settings.get_beats_per_minute())
     
     # Call main process
-    live_analyzer(camera_manager, media_pipe_declaration, pose, system_state, pose_landmarks, clock_manager, bpm_settings)
+    processing_loop(camera_manager, media_pipe_declaration, pose, system_state, pose_landmarks, clock_manager, bpm_settings)

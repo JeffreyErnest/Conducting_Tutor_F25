@@ -5,6 +5,8 @@
 
 from enum import Enum
 import threading
+import time
+import cv2
 
 class State(Enum): # Set Enum values
     SETUP = "setup"
@@ -75,6 +77,9 @@ class SetupState:
     
     def get_state_name(self):
         return State.SETUP.value
+    
+    def has_visual_beats(self):
+        return False  # SetupState doesn't have visual beats
    
     def main(self, pose_landmarks, clock_manager): 
         return self.wait_for_start_movement(pose_landmarks, clock_manager)
@@ -125,6 +130,9 @@ class CountdownState:
     def get_state_name(self):
         return State.COUNTDOWN.value
     
+    def has_visual_beats(self):
+        return False  # CountdownState doesn't have visual beats
+    
     def main(self, pose_landmarks, clock_manager):
         return self.update_countdown(clock_manager)
     
@@ -149,7 +157,8 @@ class CountdownState:
 
 from shared.sway import SwayDetection
 from shared.mirror import MirrorDetection
-from shared.sounds import Metronome
+from shared.sound_manager import SoundManager
+from live.visual_manager import ConductingGuide
 
 class ProcessingState:
     def __init__(self, bpm, clock_manager):
@@ -159,9 +168,18 @@ class ProcessingState:
         self.live_midpoint = None
         self.sway = SwayDetection() # Create an instance of sway
         self.mirror = MirrorDetection() # Create an instance of mirror
+        self.sound_manager = SoundManager() # Initialize sound manager
+        self.visual_guide = ConductingGuide() # Initialize visual guide
 
-        self.metronome = Metronome(bpm, clock_manager)
-        self.metronome_thread = None
+        # Centralized beat timing
+        self.bpm = int(bpm)
+        self.clock_manager = clock_manager
+        self.beat_interval = 60 / self.bpm  # Delay in seconds between beats
+        self.last_beat_session_time = 0.0
+        self.visual_beat_flag = False
+        self.visual_beat_lock = threading.Lock()
+        self.beat_start_time = 0.0
+        self.beat_timing_thread = None # Initialize thread tracking
 
         print("=== PROCESSING PHASE ===")
 
@@ -248,54 +266,102 @@ class ProcessingState:
     def is_mirroring(self):
         return self.mirror.get_mirroring_flag()
 
-    # Sound Functions --------------------------------------------
+    # Beat Timing Functions ----------------------------------------
+    
+    def _start_beat_timing_thread(self):
+        """Start the centralized beat timing thread."""
+        if self.beat_timing_thread is None or not self.beat_timing_thread.is_alive():
+            self.beat_timing_thread = threading.Thread(target=self._beat_timing_loop, daemon=True)
+            self.beat_timing_thread.start()
+    
+    def _beat_timing_loop(self):
+        """Centralized beat timing loop that triggers both sound and visual."""
+        while True:
+            session_elapsed_time = self.clock_manager.get_session_elapsed_time()
+            expected_next_beat_session_time = self.last_beat_session_time + self.beat_interval
+            
+            if session_elapsed_time >= expected_next_beat_session_time:
+                # Use the expected beat time for consistent timing
+                beat_time = expected_next_beat_session_time
+                
+                # Trigger sound beat
+                self.sound_manager.play_metronome_beat()
+                
+                # Trigger visual beat with consistent timing
+                with self.visual_beat_lock:
+                    self.visual_beat_flag = True
+                    self.beat_start_time = beat_time
+                
+                self.last_beat_session_time = expected_next_beat_session_time
+                
+                # Catch up if significantly behind
+                while session_elapsed_time >= self.last_beat_session_time + self.beat_interval:
+                    self.last_beat_session_time += self.beat_interval
+            
+            time.sleep(0.001)  # Small sleep to prevent 100% CPU usage
+    
+    # Visual Functions --------------------------------------------
+    
+    def should_show_beat(self):
+        """Check if we should show the beat circle and update flag."""
+        with self.visual_beat_lock:
+            if self.visual_beat_flag:
+                session_elapsed_time = self.clock_manager.get_session_elapsed_time()
+                # Hide the circle after beat_duration
+                if session_elapsed_time - self.beat_start_time >= self.visual_guide.beat_duration:
+                    self.visual_beat_flag = False
+                return True
+            return False
+    
+    def draw_beat_circle(self, frame):
+        """Draw the red circle overlay on the frame."""
+        if self.should_show_beat():
+            # Get frame dimensions
+            frame_height = frame.shape[0]
+            frame_width = frame.shape[1]
+            
+            # Center of the frame
+            center_x = frame_width // 2
+            center_y = frame_height // 2
+            
+            # Draw red circle
+            cv2.circle(frame, (center_x, center_y), 30, (0, 0, 255), -1)  # Filled red circle
+            cv2.circle(frame, (center_x, center_y), 30, (255, 255, 255), 2)  # White border
+    
+    def has_visual_beats(self):
+        """Check if this state supports visual beat indicators."""
+        return True  # Only ProcessingState has visual beats
 
-
-    def play_metronome_sound(self): 
-        play_metronome()
-
-    def _start_metronome_thread(self):
-        if self.metronome_thread is None or not self.metronome_thread.is_alive():
-            self.metronome_thread = threading.Thread(target=self.metronome.play_metronome_continuous, daemon=True)
-            self.metronome_thread.start()
-
-    # Processing State Functions -----------------------------------
+    # State Management Functions ----------------------------------
 
     def get_state_name(self):
         return State.PROCESSING.value
 
     def main(self, pose_landmarks, clock_manager):
-
-        self._start_metronome_thread() # Start metronome thread when processing begins
+        """Main processing loop for the conducting analysis."""
+        self._start_beat_timing_thread() # Start centralized beat timing thread
 
         # Initialize Threads
         midpoint_thread = threading.Thread(target=self.update_current_midpoint, args=(pose_landmarks,))
-
-        # Check to see if 3 seconds have passed, it it has update original midpoint
         update_midpoint = threading.Thread(target=self.update_midpoint_check, args=(pose_landmarks, clock_manager))
-
-        # TODO: 
-        # Add the no midpoint check here or in file, think about this in the future not now.
         sway_thread = threading.Thread(target=self.sway.main, args=(self.reference_midpoint, self.live_midpoint))
-
         mirror_thread = threading.Thread(target=self.mirror.main, args=(pose_landmarks, clock_manager, self.live_midpoint))
 
-        # Thread Calls
+        # Execute threads
         midpoint_thread.start() # Update midpoint
-        midpoint_thread.join() # Midpoint was updated
-
+        
+        # Midpoint Reliant Threads
+        midpoint_thread.join() # Join midpoint thread before midpoint reliant methods
         update_midpoint.start()
-        update_midpoint.join() # Midpoint was updated
-
         sway_thread.start()
         mirror_thread.start() 
 
         # Join threads before returning
+        update_midpoint.join()
         sway_thread.join()
         mirror_thread.join()
 
         print("All threads done next cycle")
-
         return State.PROCESSING.value  # Use enum value
 
 class EndingState:
@@ -304,6 +370,10 @@ class EndingState:
     
     def get_state_name(self):
         return State.ENDING.value
+    
+    def has_visual_beats(self):
+        """Check if this state supports visual beat indicators."""
+        return False  # EndingState doesn't have visual beats
     
     def main(self, pose_landmarks, clock_manager):
         # TODO: Add ending logic 

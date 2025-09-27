@@ -76,7 +76,7 @@ def draw_midpoint_line(system_state, annotated_frame):
     cv2.putText(annotated_frame, f'Ref Midpoint: {reference_midpoint:.3f}', (10, 170), 
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
 
-def live_analyzer(camera_manager, media_pipe_declaration, pose, system_state, pose_landmarks, clock_manager, bpm_settings):
+def processing_loop(camera_manager, media_pipe_declaration, pose, system_state, pose_landmarks, clock_manager, bpm_settings):
 
     # Initialize camera
     if not camera_manager.initialize_camera():
@@ -127,6 +127,10 @@ def live_analyzer(camera_manager, media_pipe_declaration, pose, system_state, po
 
                 if system_state.is_mirroring():
                     cv2.putText(annotated_frame, "Mirroring", (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
+                
+                # Draw visual beat circle if this state supports it
+                if current_state.has_visual_beats():
+                    current_state.draw_beat_circle(annotated_frame)
 
                     
             # Check if we need to change states

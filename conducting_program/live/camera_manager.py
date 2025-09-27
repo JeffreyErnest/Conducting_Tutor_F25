@@ -3,7 +3,7 @@ import time
 
 class CameraManager:
 
-    def __init__(self, camera_index="C:/Users/Jeffrey Ernest/Desktop/videos/Marchingband(2).mp4"):
+    def __init__(self, camera_index=0):
         self.camera_index = camera_index
         self.cap = None
         self.prev_frame_time = 0
