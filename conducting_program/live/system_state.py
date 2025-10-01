@@ -268,13 +268,13 @@ class ProcessingState:
 
     # Beat Timing Functions ----------------------------------------
     
-    def _start_beat_timing_thread(self):
-        """Start the centralized beat timing thread."""
-        if self.beat_timing_thread is None or not self.beat_timing_thread.is_alive():
-            self.beat_timing_thread = threading.Thread(target=self._beat_timing_loop, daemon=True)
-            self.beat_timing_thread.start()
+    # def _start_beat_timing_thread(self):
+    #     """Start the centralized beat timing thread."""
+    #     if self.beat_timing_thread is None or not self.beat_timing_thread.is_alive():
+    #         self.beat_timing_thread = threading.Thread(target=self._beat_timing_loop, daemon=True)
+    #         self.beat_timing_thread.start()
     
-    def _beat_timing_loop(self):
+    def beat_timing_loop(self):
         """Centralized beat timing loop that triggers both sound and visual."""
         while True:
             session_elapsed_time = self.clock_manager.get_session_elapsed_time()
@@ -284,13 +284,9 @@ class ProcessingState:
                 # Use the expected beat time for consistent timing
                 beat_time = expected_next_beat_session_time
                 
-                # Trigger sound beat
-                self.sound_manager.play_metronome_beat()
-                
-                # Trigger visual beat with consistent timing
-                with self.visual_beat_lock:
-                    self.visual_beat_flag = True
-                    self.beat_start_time = beat_time
+                # Threading Calls for displaying beats
+                threading.Thread(target=self.play_metronome_sound).start()
+                threading.Thread(target=self.trigger_visual_beat, args=(beat_time,)).start()
                 
                 self.last_beat_session_time = expected_next_beat_session_time
                 
@@ -298,9 +294,40 @@ class ProcessingState:
                 while session_elapsed_time >= self.last_beat_session_time + self.beat_interval:
                     self.last_beat_session_time += self.beat_interval
             
-            time.sleep(0.001)  # Small sleep to prevent 100% CPU usage
+            # time.sleep(0.001)  # Small sleep to prevent 100% CPU usage
+
+    # Sound Functions --------------------------------------------
+        
+    # def play_metronome_sound(self):
+    #     """Threaded method to play metronome sound."""
+    #     self.sound_manager.play_metronome_sound()
     
     # Visual Functions --------------------------------------------
+    
+    def trigger_visual_beat(self, beat_time):
+        """Threaded method to trigger visual beat display."""
+        with self.visual_beat_lock:
+            self.visual_beat_flag = True
+            self.beat_start_time = beat_time
+    
+    def check_and_trigger_beats(self):
+        """Frame-based beat checking - more efficient than continuous loop."""
+        session_elapsed_time = self.clock_manager.get_session_elapsed_time()
+        expected_next_beat_session_time = self.last_beat_session_time + self.beat_interval
+        
+        if session_elapsed_time >= expected_next_beat_session_time:
+            # Use the expected beat time for consistent timing
+            beat_time = expected_next_beat_session_time
+            
+            # Threading Calls for displaying beats
+            threading.Thread(target=self.sound_manager.play_metronome_sound()).start()
+            threading.Thread(target=self.trigger_visual_beat, args=(beat_time,)).start()
+            
+            self.last_beat_session_time = expected_next_beat_session_time
+            
+            # Catch up if significantly behind
+            while session_elapsed_time >= self.last_beat_session_time + self.beat_interval:
+                self.last_beat_session_time += self.beat_interval
     
     def should_show_beat(self):
         """Check if we should show the beat circle and update flag."""
@@ -337,44 +364,63 @@ class ProcessingState:
     def get_state_name(self):
         return State.PROCESSING.value
 
-    def _setup_bpm_timing(self):
-        """Setup BPM timing calculations and start beat timing thread."""
-        # BPM calculations are already done in __init__, but ensure timing is ready
-        self._start_beat_timing_thread()
-        print("BPM timing setup complete")
+    # def _setup_bpm_timing(self):
+    #     """Setup BPM timing calculations and start beat timing thread."""
+    #     # BPM calculations are already done in __init__, but ensure timing is ready
+    #     self._start_beat_timing_thread()
+    #     print("BPM timing setup complete")
 
     def main(self, pose_landmarks, clock_manager):
-        """Main processing loop for the conducting analysis."""
+        """Main data processing loop."""
 
-        # Setup / Foundational methods
-        bpm_thread = threading.Thread(target=self._setup_bpm_timing)
-        midpoint_thread = threading.Thread(target=self.update_current_midpoint, args=(pose_landmarks,))
+        # Check for beats every frame (more accurate than continuous loop)
+        self.check_and_trigger_beats()
         
-        # Start foundational threads
-        bpm_thread.start()
-        midpoint_thread.start()
+        # Main processing (runs every frame)
+        self.update_current_midpoint(pose_landmarks)
+        self.update_midpoint_check(pose_landmarks, clock_manager)
+        self.sway.main(self.reference_midpoint, self.live_midpoint)
+        self.mirror.main(pose_landmarks, clock_manager, self.live_midpoint)
 
-        # Wait for foundational threads to complete
-        bpm_thread.join()  # Wait for BPM timing to be ready
-        midpoint_thread.join()  # Wait for midpoint to be calculated
-
-        # Execute dependent threads in parallel
-        update_midpoint = threading.Thread(target=self.update_midpoint_check, args=(pose_landmarks, clock_manager))
-        sway_thread = threading.Thread(target=self.sway.main, args=(self.reference_midpoint, self.live_midpoint))
-        mirror_thread = threading.Thread(target=self.mirror.main, args=(pose_landmarks, clock_manager, self.live_midpoint))
-        
-        # Start dependent threads
-        update_midpoint.start()
-        sway_thread.start()
-        mirror_thread.start()
-
-        # Join all dependent threads
-        update_midpoint.join()
-        sway_thread.join()
-        mirror_thread.join()
-
-        print("All threads done next cycle")
+        # TODO: Check for ending movment
+    
+        print("End of Frame Cycle")
         return State.PROCESSING.value  # Use enum value
+
+
+    # Threaded main
+    # def main(self, pose_landmarks, clock_manager):
+    #     """Main processing loop for the conducting analysis."""
+
+    #     # Setup / Foundational methods
+    #     bpm_thread = threading.Thread(target=self._setup_bpm_timing)
+    #     midpoint_thread = threading.Thread(target=self.update_current_midpoint, args=(pose_landmarks,))
+        
+    #     # Start foundational threads
+    #     bpm_thread.start()
+    #     midpoint_thread.start()
+
+    #     # Wait for foundational threads to complete
+    #     bpm_thread.join()  # Wait for BPM timing to be ready
+    #     midpoint_thread.join()  # Wait for midpoint to be calculated
+
+    #     # Execute dependent threads in parallel
+    #     update_midpoint = threading.Thread(target=self.update_midpoint_check, args=(pose_landmarks, clock_manager))
+    #     sway_thread = threading.Thread(target=self.sway.main, args=(self.reference_midpoint, self.live_midpoint))
+    #     mirror_thread = threading.Thread(target=self.mirror.main, args=(pose_landmarks, clock_manager, self.live_midpoint))
+        
+    #     # Start dependent threads
+    #     update_midpoint.start()
+    #     sway_thread.start()
+    #     mirror_thread.start()
+
+    #     # Join all dependent threads
+    #     update_midpoint.join()
+    #     sway_thread.join()
+    #     mirror_thread.join()
+
+    #     print("All threads done next cycle")
+    #     return State.PROCESSING.value  # Use enum value
 
 class EndingState:
     def __init__(self):
