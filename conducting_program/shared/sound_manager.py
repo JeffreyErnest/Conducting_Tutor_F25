@@ -27,17 +27,14 @@ class SoundManager:
             self.metronome_sound = None
 
     def play_metronome_sound(self):
-        """Play a single metronome beat."""
-        play(self.metronome_sound)
-
-    # def play_metronome_beat(self):
-    #     """Play a single metronome beat (non-blocking)."""
-    #     if self.metronome_sound is not None:
-    #         threading.Thread(target=self._play_sound_non_blocking, args=(self.metronome_sound,)).start()
-    #     else:
-    #         print("Metronome sound not loaded, cannot play.")
+        """Play a single metronome beat (non-blocking)."""
+        if self.metronome_sound is not None:
+            threading.Thread(target=self._play_sound_non_blocking, args=(self.metronome_sound,)).start()
+        else:
+            print("Metronome sound not loaded, cannot play.")
     
-    # def _play_sound_non_blocking(self, sound):
-    #     """Helper to play sound in a separate thread."""
-    #     if sound:
-    #         play(sound)
+    def _play_sound_non_blocking(self, sound):
+        """Helper to play sound in a separate thread."""
+        if sound:
+            play(sound)
+
