@@ -2,7 +2,6 @@ import mediapipe as mp
 import numpy as np
 from mediapipe.framework.formats import landmark_pb2
 
-
 class mediaPipeDeclaration:
 
     BaseOptions = mp.tasks.BaseOptions

@@ -76,7 +76,42 @@ def draw_midpoint_line(system_state, annotated_frame):
     cv2.putText(annotated_frame, f'Ref Midpoint: {reference_midpoint:.3f}', (10, 170), 
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
 
-def processing_loop(camera_manager, media_pipe_declaration, pose, system_state, pose_landmarks, clock_manager, bpm_settings):
+# State handlers
+def handle_setup(current_state, pose_landmarks, clock_manager, system_state, annotated_frame):
+    """Handle setup state logic."""
+    return current_state.main(pose_landmarks, clock_manager)
+
+def handle_countdown(current_state, pose_landmarks, clock_manager, system_state, annotated_frame):
+    """Handle countdown state logic."""
+    return current_state.main(pose_landmarks, clock_manager, system_state.get_beat_manager())
+
+def handle_processing(current_state, pose_landmarks, clock_manager, system_state, annotated_frame):
+    """Handle processing state logic."""
+    next_state = current_state.main(pose_landmarks, clock_manager)
+    # Processing-specific rendering
+    if system_state.is_swaying():
+        cv2.putText(annotated_frame, "Swaying", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 2)
+    draw_midpoint_live_line(pose_landmarks, annotated_frame)
+    draw_midpoint_threshold_lines(system_state, annotated_frame)
+    draw_midpoint_line(system_state, annotated_frame)
+    if system_state.is_mirroring():
+        cv2.putText(annotated_frame, "Mirroring", (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
+    return next_state
+
+def handle_ending(current_state, pose_landmarks, clock_manager, system_state, annotated_frame):
+    """Handle ending state logic."""
+    return current_state.main(pose_landmarks, clock_manager)
+
+# State handler dictionary
+STATE_HANDLERS = {
+    "setup": handle_setup,
+    "countdown": handle_countdown,
+    "processing": handle_processing,
+    "ending": handle_ending
+}
+
+# Main processing loop 
+def processing_loop(camera_manager, media_pipe_declaration, pose, system_state, pose_landmarks, clock_manager, settings):
 
     # Initialize camera
     if not camera_manager.initialize_camera():
@@ -114,28 +149,28 @@ def processing_loop(camera_manager, media_pipe_declaration, pose, system_state, 
             # Landmark Information
             pose_landmarks.update_landmarks(detection_result) # Update Landmarks
 
-            # Get current state and call its main method
+            # Get current state and execute state logic with dispatch pattern
             current_state = system_state.get_current_state()
-            next_state = current_state.main(pose_landmarks, clock_manager)
-
-            if current_state.get_state_name() == "processing":
-                if system_state.is_swaying():
-                    cv2.putText(annotated_frame, "Swaying", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 2)
-                draw_midpoint_live_line(pose_landmarks, annotated_frame) # Draws live midpoint line
-                draw_midpoint_threshold_lines(system_state, annotated_frame) # Draws refrence midpoint thresholds
-                draw_midpoint_line(system_state, annotated_frame) # Draws refrance midpoint line
-
-                if system_state.is_mirroring():
-                    cv2.putText(annotated_frame, "Mirroring", (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
-                
-                # Draw visual beat circle if this state supports it
-                if current_state.has_visual_beats():
-                    current_state.draw_beat_circle(annotated_frame)
-
-                    
+            state_name = current_state.get_state_name()
+            
+            # Dispatch to get handler from STATE_HANDLERS
+            handler = STATE_HANDLERS.get(state_name)
+            if handler:
+                next_state = handler(current_state, pose_landmarks, clock_manager, system_state, annotated_frame)
+            else:
+                next_state = state_name  # Fallback for unknown states
+            
+            # Draw visual beats from BeatManager (all states can show beats)
+            beat_manager = system_state.get_beat_manager()
+            if beat_manager and beat_manager.should_show_visual():
+                frame_height, frame_width = annotated_frame.shape[:2]
+                center_x, center_y = frame_width // 2, frame_height // 2
+                cv2.circle(annotated_frame, (center_x, center_y), 30, (0, 0, 255), -1)  # Red circle
+                cv2.circle(annotated_frame, (center_x, center_y), 30, (255, 255, 255), 2)  # White border
+   
             # Check if we need to change states
-            if next_state != current_state.get_state_name():
-                system_state.change_state(next_state, clock_manager, bpm_settings.get_beats_per_minute())
+            if next_state != state_name:
+                system_state.change_state(next_state, clock_manager)
 
             # Display frame
             if show_frame(annotated_frame):

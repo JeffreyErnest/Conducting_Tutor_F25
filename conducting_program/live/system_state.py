@@ -3,10 +3,17 @@
 # as well have infomation on the body ouline
 # so people know how far to stand from the camera. 
 
-from enum import Enum
 import threading
 import time
 import cv2
+from enum import Enum
+
+# Import components
+from shared.sway import SwayDetection
+from shared.mirror import MirrorDetection
+from shared.sound_manager import SoundManager
+from live.visual_manager import ConductingGuide
+from live.beat_manager import BeatManager
 
 class State(Enum): # Set Enum values
     SETUP = "setup"
@@ -15,86 +22,98 @@ class State(Enum): # Set Enum values
     ENDING = "ending"
 
 class SystemState:
-    def __init__(self):
+    def __init__(self, settings):
         self.current_state = SetupState()  # Start with setup state
+        self.settings = settings  # Store settings for lazy BeatManager initialization
+        self.beat_manager = None  # Lazy initialization - only create when needed
+    
+    # -------------------- State Accessor --------------------
     
     def get_current_state(self):
         return self.current_state
     
+    # -------------------- Delegated Getters --------------------
+    
     def is_swaying(self):
-        # Defer to processing state's sway flag if applicable
-        try:
-            return isinstance(self.current_state, ProcessingState) and self.current_state.is_swaying()
-        except NameError:
-            return False
+        return self.current_state.is_swaying()
 
     def get_sway_thresholds(self):
-        # Defer to processing state's thresholds if applicable
-        try:
-            if isinstance(self.current_state, ProcessingState):
-                return self.current_state.get_sway_thresholds()
-        except NameError:
-            pass
-        return None, None
+        return self.current_state.get_sway_thresholds()
 
     def get_reference_midpoint(self):
-        # Expose stable/reference midpoint when in processing
-        try:
-            if isinstance(self.current_state, ProcessingState):
-                return self.current_state.get_reference_midpoint()
-        except NameError:
-            pass
-        return None
+        return self.current_state.get_reference_midpoint()
 
     def is_mirroring(self):
-        # Defer to processing state's sway flag if applicable
-        try:
-            return isinstance(self.current_state, ProcessingState) and self.current_state.is_mirroring()
-        except NameError:
-            return False
+        return self.current_state.is_mirroring()
+    
+    # -------------------- Beat Manager --------------------
+    
+    def get_beat_manager(self):
+        """Lazy initialization: create BeatManager only when first requested."""
+        if self.beat_manager is None:
+            print("Initializing BeatManager...")
+            self.beat_manager = BeatManager(self.settings)
+        return self.beat_manager
 
-    def change_state(self, new_state, clock_manager=None, bpm=0):
+    # -------------------- State Transition --------------------
+    
+    def change_state(self, new_state, clock_manager):
+        """Change to a new state and perform any necessary initialization."""
         if new_state == State.COUNTDOWN.value:
             self.current_state = CountdownState()
         elif new_state == State.PROCESSING.value:
-            self.current_state = ProcessingState(bpm, clock_manager)
-            clock_manager.start_session_clock()  # Start session timing for processing
+            self.current_state = ProcessingState(clock_manager)
+            clock_manager.start_session_clock()
         elif new_state == State.ENDING.value:
             self.current_state = EndingState()
         print(f"State changed to: {new_state}")
 
 class SetupState:
     def __init__(self):
-        self.left_wrist_y15 = 0
-        self.right_wrist_y16 = 0
+        # Values initialized on first frame
+        self.left_wrist_y15 = None
+        self.right_wrist_y16 = None
         self.previous_y_left = None
         self.previous_y_right = None
+        
+        # State tracking
         self.processing_active = False
+        self.movement_tracking = False
         self.movement_start_time = None
+        self.first_frame = True
+        
+        # Configuration
         self.movement_hold_duration = 1.0  # Hold hands up for 1 second
         self.significant_movement_threshold = 0.1
+        
         print("=== SETUP PHASE ===")
+    
+    # -------------------- State Identifier --------------------
     
     def get_state_name(self):
         return State.SETUP.value
     
     def has_visual_beats(self):
         return False  # SetupState doesn't have visual beats
+    
+    # -------------------- Frame Processing --------------------
    
-    def main(self, pose_landmarks, clock_manager): 
-        return self.wait_for_start_movement(pose_landmarks, clock_manager)
+    def _initialize_first_frame(self, pose_landmarks):
+        """Initialize values on the first frame only."""
+        (_, self.left_wrist_y15) = pose_landmarks.get_pose_landmark_15()
+        (_, self.right_wrist_y16) = pose_landmarks.get_pose_landmark_16()
+        
+        # Set initial previous positions if we have valid data
+        self.previous_y_left = self.left_wrist_y15
+        self.previous_y_right = self.right_wrist_y16
 
     def wait_for_start_movement(self, pose_landmarks, clock_manager):
+        """Detect user's hands-up gesture to start countdown."""
         (_, self.left_wrist_y15) = pose_landmarks.get_pose_landmark_15()
         (_, self.right_wrist_y16) = pose_landmarks.get_pose_landmark_16()
 
         # Check to make sure we have data for both wrists
         if self.left_wrist_y15 is None or self.right_wrist_y16 is None: 
-            return State.SETUP.value
-
-        if self.previous_y_left is None or self.previous_y_right is None: # We only need to do this once for the frist frame, maybe change this later
-            self.previous_y_left = self.left_wrist_y15
-            self.previous_y_right = self.right_wrist_y16
             return State.SETUP.value 
 
         # Check for significant upward movement for both left and right
@@ -109,118 +128,133 @@ class SetupState:
         both_hands_up = (left_moved_up and right_moved_up) and not (left_dropped_down or right_dropped_down)
 
         if both_hands_up and not self.processing_active:
-            if self.movement_start_time is None:
+            if not self.movement_tracking:
                 self.movement_start_time = clock_manager.get_current_timestamp()
+                self.movement_tracking = True
             elif clock_manager.get_current_timestamp() - self.movement_start_time >= self.movement_hold_duration:
                 print("Starting Countdown")
                 self.processing_active = True
-                return State.COUNTDOWN.value  # Use enum value
+                return State.COUNTDOWN.value
         elif left_dropped_down or right_dropped_down:
+            self.movement_tracking = False
             self.movement_start_time = None  # Reset movement timer
         
-        return State.SETUP.value  # Use enum value
+        return State.SETUP.value
+    
+    # -------------------- Main Entry Point --------------------
+    
+    def main(self, pose_landmarks, clock_manager):
+        """Main setup loop - wait for user to start."""
+        if self.first_frame:
+            self._initialize_first_frame(pose_landmarks)
+            self.first_frame = False
+            return State.SETUP.value
+        else:
+            return self.wait_for_start_movement(pose_landmarks, clock_manager)
 
 class CountdownState:
     def __init__(self):
-        self.countdown_value = 3
-        self.countdown_start_time = None
-        self.countdown_interval = 1.0  # 1 second between countdown numbers
+        # Values initialized on first frame
+        self.beats_per_measure = None
+        
+        # State tracking
+        self.first_frame = True
+        
         print("=== COUNTDOWN PHASE ===")
+    
+    # -------------------- State Identifier --------------------
     
     def get_state_name(self):
         return State.COUNTDOWN.value
     
-    def has_visual_beats(self):
-        return False  # CountdownState doesn't have visual beats
+    # -------------------- Frame Processing --------------------
     
-    def main(self, pose_landmarks, clock_manager):
-        return self.update_countdown(clock_manager)
+    def _initialize_first_frame(self, beat_manager):
+        """Initialize countdown on the first frame."""
+        if beat_manager:
+            beat_manager.start()
+            self.beats_per_measure = beat_manager.beats_per_measure
+            print(f"Countdown started: {self.beats_per_measure} beats")
     
-    def update_countdown(self, clock_manager):
-        if self.countdown_start_time is None:
-            self.countdown_start_time = clock_manager.get_current_timestamp()
-            print(f"{self.countdown_value}")
+    def _check_countdown_complete(self, beat_manager):
+        """Check if one full measure has completed."""
+        if beat_manager and beat_manager.get_measure_count() >= 1:
+            print("GO! Transition to Processing")
+            return State.PROCESSING.value
+        return State.COUNTDOWN.value
+    
+    # -------------------- Main Entry Point --------------------
+    
+    def main(self, pose_landmarks, clock_manager, beat_manager=None):
+        """Countdown: Start BeatManager and wait for one full measure."""
+        if self.first_frame:
+            self._initialize_first_frame(beat_manager)
+            self.first_frame = False
             return State.COUNTDOWN.value
-        
-        elapsed_time = clock_manager.get_current_timestamp() - self.countdown_start_time
-        expected_countdown = 3 - int(elapsed_time)
-        
-        if expected_countdown != self.countdown_value and expected_countdown >= 0:
-            self.countdown_value = expected_countdown
-            print(f"{self.countdown_value}")
-        
-        if elapsed_time >= 3.0:  # After 3 seconds
-            print("GO!") # Debug
-            return State.PROCESSING.value  # Use enum value
-        
-        return State.COUNTDOWN.value  # Use enum value
-
-from shared.sway import SwayDetection
-from shared.mirror import MirrorDetection
-from shared.sound_manager import SoundManager
-from live.visual_manager import ConductingGuide
+        else:
+            return self._check_countdown_complete(beat_manager)
 
 class ProcessingState:
-    def __init__(self, bpm, clock_manager):
-        self.reference_midpoint = None  # Stable reference midpoint updated periodically
-        self.last_midpoint_checked = None  # Track when midpoint was last checked
-        self.midpoint_stable_count = 0  # Count how many times midpoint has been stable
+    def __init__(self, clock_manager):
+        # Values initialized on first frame
+        self.reference_midpoint = None
+        self.last_midpoint_checked = None
         self.live_midpoint = None
-        self.sway = SwayDetection() # Create an instance of sway
-        self.mirror = MirrorDetection() # Create an instance of mirror
-        self.sound_manager = SoundManager() # Initialize sound manager
-        self.visual_guide = ConductingGuide() # Initialize visual guide
-
-        # Centralized beat timing
-        self.bpm = int(bpm)
+        
+        # State tracking
+        self.midpoint_stable_count = 0
+        self.first_frame = True
+        
+        # Components
+        self.sway = SwayDetection()
+        self.mirror = MirrorDetection()
         self.clock_manager = clock_manager
-        self.beat_interval = 60 / self.bpm  # Delay in seconds between beats
-        self.last_beat_session_time = 0.0
-        self.visual_beat_flag = False
-        self.visual_beat_lock = threading.Lock()
-        self.beat_start_time = 0.0
-        self.beat_timing_thread = None # Initialize thread tracking
 
         print("=== PROCESSING PHASE ===")
 
-    # Midpoint Functions -------------------------------------------
+    # -------------------- State Identifier --------------------
+
+    def get_state_name(self):
+        return State.PROCESSING.value
+    
+    # -------------------- Getter Methods --------------------
 
     def get_reference_midpoint(self):
         return self.reference_midpoint
     
-    # Check to see if 3 seconds have passed
-    def should_update_midpoint(self, current_time, interval_seconds=3.0):
-        # Check if enough time has passed to update the midpoint
-        if self.last_midpoint_checked is None:
-            self.last_midpoint_checked = current_time
-            return True  # First time, always update
+    def is_swaying(self):
+        return self.sway.get_sway_flag()
 
-        return (current_time - self.last_midpoint_checked) >= interval_seconds
+    def get_sway_thresholds(self):
+        return self.sway.get_threshold_left(), self.sway.get_threshold_right()
+
+    def is_mirroring(self):
+        return self.mirror.get_mirroring_flag()
+    
+    # -------------------- Midpoint Processing --------------------
     
     def update_current_midpoint(self, pose_landmarks):
+        """Update the live midpoint from current pose data."""
         if pose_landmarks.left_shoulder_12 and pose_landmarks.right_shoulder_11:
             pose_landmarks.calculate_midpoint() 
             self.live_midpoint = pose_landmarks.get_midpoint()
     
-    # Check to see if we need to update the midpoint
+    def should_update_midpoint(self, current_time, interval_seconds=3.0):
+        """Check if enough time has passed to update the midpoint."""
+        return (current_time - self.last_midpoint_checked) >= interval_seconds
+    
     def update_midpoint_check(self, pose_landmarks, clock_manager):
+        """Check and update reference midpoint if needed."""
         current_time = clock_manager.get_current_timestamp() # Get current time
         
         # Check if it's time to update (every 3 seconds)
         if not self.should_update_midpoint(current_time, 3.0):
             return False  # Not time to check yet
 
-        # 3 seconds have passed update refrence midpoint; require a valid live midpoint
+        # 3 seconds have passed update reference midpoint; require a valid live midpoint
         if self.live_midpoint is None:
             self.last_midpoint_checked = current_time
             return False
-
-        # If this is the first time, set the reference midpoint
-        if self.reference_midpoint is None:
-            self.reference_midpoint = self.live_midpoint
-            self.last_midpoint_checked = current_time
-            print("Reference midpoint set") # DEBUG
-            return True
 
         # Delegate the evaluation logic to a dedicated method
         updated = self.evaluate_reference_update(current_time)
@@ -228,14 +262,14 @@ class ProcessingState:
         return updated
 
     def evaluate_reference_update(self, current_time):
-        # Compare live directly to reference
+        """Evaluate whether to update reference midpoint based on movement."""
         midpoint_difference = abs(self.live_midpoint - self.reference_midpoint)
 
         # Micro-adjust when close to reference (smooth small drift)
         if midpoint_difference <= 0.02:
             self.reference_midpoint = self.live_midpoint
             self.midpoint_stable_count = 0
-            print("Reference midpoint micro-adjusted") # DEBUG
+            print("Reference midpoint micro-adjusted")
             return True
 
         # Large movement: require stability across 2 checks (6s total) before updating
@@ -244,115 +278,57 @@ class ProcessingState:
             if self.midpoint_stable_count >= 2:
                 self.reference_midpoint = self.live_midpoint
                 self.midpoint_stable_count = 0
-                print("Reference midpoint updated (stable large move)") # DEBUG
+                print("Reference midpoint updated (stable large move)")
                 return True
         else:
             # Small-to-medium movement: do not update reference; reset stability counter
             self.midpoint_stable_count = 0
         return False
-
     
-    # Swaying Functions --------------------------------------------
-
-    def is_swaying(self):
-        return self.sway.get_sway_flag()
-
-        # Maybe remove later
-    def get_sway_thresholds(self):
-        return self.sway.get_threshold_left(), self.sway.get_threshold_right()
-
-    # Mirror Functions --------------------------------------------
-
-    def is_mirroring(self):
-        return self.mirror.get_mirroring_flag()
-
-    # Beat Timing Functions ----------------------------------------
+    # -------------------- Frame Processing --------------------
     
-    def bpm_loop(self):
-        """Handle beat timing and playback."""
-        session_elapsed_time = self.clock_manager.get_session_elapsed_time()
-        expected_next_beat_session_time = self.last_beat_session_time + self.beat_interval
-        
-        if session_elapsed_time >= expected_next_beat_session_time:
-            # Use the expected beat time for consistent timing
-            beat_time = expected_next_beat_session_time
-            
-            # Threading Calls for displaying beats (non-blocking)
-            threading.Thread(target=self.sound_manager.play_metronome_sound, daemon=True).start()
-            threading.Thread(target=self.trigger_visual_beat, args=(beat_time,), daemon=True).start()
-            
-            self.last_beat_session_time = expected_next_beat_session_time
-
-    # Visual Functions --------------------------------------------
+    def _initialize_first_frame(self, pose_landmarks):
+        """Initialize processing state on first frame."""
+        self.update_current_midpoint(pose_landmarks)
+        if self.live_midpoint is not None:
+            self.reference_midpoint = self.live_midpoint
+            self.last_midpoint_checked = self.clock_manager.get_current_timestamp()
+            print("Reference midpoint initialized")
     
-    def trigger_visual_beat(self, beat_time):
-        """Threaded method to trigger visual beat display."""
-        with self.visual_beat_lock:
-            self.visual_beat_flag = True
-            self.beat_start_time = beat_time
+    def _process_frame(self, pose_landmarks):
+        """Process a single frame of data."""
+        self.update_current_midpoint(pose_landmarks)
+        self.update_midpoint_check(pose_landmarks, self.clock_manager)
+        self.sway.main(self.reference_midpoint, self.live_midpoint)
+        self.mirror.main(pose_landmarks, self.clock_manager, self.live_midpoint)
+        # TODO: Check for ending movement
+        print("End of Frame Cycle")
     
-    def should_show_beat(self):
-        """Check if we should show the beat circle and update flag."""
-        with self.visual_beat_lock:
-            if self.visual_beat_flag:
-                session_elapsed_time = self.clock_manager.get_session_elapsed_time()
-                # Hide the circle after beat_duration
-                if session_elapsed_time - self.beat_start_time >= self.visual_guide.beat_duration:
-                    self.visual_beat_flag = False
-                return True
-            return False
-    
-    def draw_beat_circle(self, frame):
-        """Draw the red circle overlay on the frame."""
-        if self.should_show_beat():
-            # Get frame dimensions
-            frame_height = frame.shape[0]
-            frame_width = frame.shape[1]
-            
-            # Center of the frame
-            center_x = frame_width // 2
-            center_y = frame_height // 2
-            
-            # Draw red circle
-            cv2.circle(frame, (center_x, center_y), 30, (0, 0, 255), -1)  # Filled red circle
-            cv2.circle(frame, (center_x, center_y), 30, (255, 255, 255), 2)  # White border
-    
-    def has_visual_beats(self):
-        """Check if this state supports visual beat indicators."""
-        return True  # Only ProcessingState has visual beats
-
-    # State Management Functions ----------------------------------
-
-    def get_state_name(self):
-        return State.PROCESSING.value
+    # -------------------- Main Entry Point --------------------
 
     def main(self, pose_landmarks, clock_manager):
-        """Main data processing loop."""
-    
-        # Main processing 
-        self.bpm_loop()
-        self.update_current_midpoint(pose_landmarks)
-        self.update_midpoint_check(pose_landmarks, clock_manager)
-        self.sway.main(self.reference_midpoint, self.live_midpoint)
-        self.mirror.main(pose_landmarks, clock_manager, self.live_midpoint)
-
-        # TODO: Check for ending movment
-    
-        print("End of Frame Cycle")
-        return State.PROCESSING.value  # Use enum value
+        """Main data processing loop"""
+        if self.first_frame:
+            self._initialize_first_frame(pose_landmarks)
+            self.first_frame = False
+            return State.PROCESSING.value
+        else:
+            self._process_frame(pose_landmarks)
+            return State.PROCESSING.value
 
 class EndingState:
     def __init__(self):
         print("=== ENDING PHASE ===")
     
+    # -------------------- State Identifier --------------------
+    
     def get_state_name(self):
         return State.ENDING.value
     
-    def has_visual_beats(self):
-        """Check if this state supports visual beat indicators."""
-        return False  # EndingState doesn't have visual beats
+    # -------------------- Main Entry Point --------------------
     
     def main(self, pose_landmarks, clock_manager):
+        """Ending phase processing."""
         # TODO: Add ending logic 
-        return State.ENDING.value  # Use enum value 
+        return State.ENDING.value 
    
