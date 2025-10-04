@@ -14,6 +14,7 @@ from shared.mirror import MirrorDetection
 from shared.sound_manager import SoundManager
 from live.visual_manager import ConductingGuide
 from live.beat_manager import BeatManager
+from shared.elbow import ElbowDetection
 
 class State(Enum): # Set Enum values
     SETUP = "setup"
@@ -45,6 +46,12 @@ class SystemState:
 
     def is_mirroring(self):
         return self.current_state.is_mirroring()
+
+    def is_left_elbow_raised(self):
+        return self.current_state.is_left_elbow_raised()
+    
+    def is_right_elbow_raised(self):
+        return self.current_state.is_right_elbow_raised()
     
     # -------------------- Beat Manager --------------------
     
@@ -208,6 +215,7 @@ class ProcessingState:
         # Components
         self.sway = SwayDetection()
         self.mirror = MirrorDetection()
+        self.elbow = ElbowDetection()
         self.clock_manager = clock_manager
 
         print("=== PROCESSING PHASE ===")
@@ -230,6 +238,12 @@ class ProcessingState:
 
     def is_mirroring(self):
         return self.mirror.get_mirroring_flag()
+
+    def is_left_elbow_raised(self):
+        return self.elbow.get_watch_left_elbow()
+    
+    def is_right_elbow_raised(self):
+        return self.elbow.get_watch_right_elbow()
     
     # -------------------- Midpoint Processing --------------------
     
@@ -293,7 +307,6 @@ class ProcessingState:
         if self.live_midpoint is not None:
             self.reference_midpoint = self.live_midpoint
             self.last_midpoint_checked = self.clock_manager.get_current_timestamp()
-            print("Reference midpoint initialized")
     
     def _process_frame(self, pose_landmarks):
         """Process a single frame of data."""
@@ -301,8 +314,9 @@ class ProcessingState:
         self.update_midpoint_check(pose_landmarks, self.clock_manager)
         self.sway.main(self.reference_midpoint, self.live_midpoint)
         self.mirror.main(pose_landmarks, self.clock_manager, self.live_midpoint)
+        self.elbow.main(pose_landmarks)
         # TODO: Check for ending movement
-        print("End of Frame Cycle")
+        # print("End of Frame Cycle")
     
     # -------------------- Main Entry Point --------------------
 

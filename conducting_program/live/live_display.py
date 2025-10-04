@@ -96,6 +96,10 @@ def handle_processing(current_state, pose_landmarks, clock_manager, system_state
     draw_midpoint_line(system_state, annotated_frame)
     if system_state.is_mirroring():
         cv2.putText(annotated_frame, "Mirroring", (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
+    if system_state.is_left_elbow_raised():
+        cv2.putText(annotated_frame, "Watch Left Elbow", (50, 200), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
+    if system_state.is_right_elbow_raised():
+        cv2.putText(annotated_frame, "Watch Right Elbow", (50, 250), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
     return next_state
 
 def handle_ending(current_state, pose_landmarks, clock_manager, system_state, annotated_frame):
