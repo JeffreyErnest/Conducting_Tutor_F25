@@ -83,7 +83,7 @@ def handle_setup(current_state, pose_landmarks, clock_manager, system_state, ann
 
 def handle_countdown(current_state, pose_landmarks, clock_manager, system_state, annotated_frame):
     """Handle countdown state logic."""
-    return current_state.main(pose_landmarks, clock_manager, system_state.get_beat_manager())
+    return current_state.main(pose_landmarks, clock_manager)
 
 def handle_processing(current_state, pose_landmarks, clock_manager, system_state, annotated_frame):
     """Handle processing state logic."""
@@ -165,8 +165,7 @@ def processing_loop(camera_manager, media_pipe_declaration, pose, system_state, 
                 next_state = state_name  # Fallback for unknown states
             
             # Draw visual beats from BeatManager (all states can show beats)
-            beat_manager = system_state.get_beat_manager()
-            if beat_manager and beat_manager.should_show_visual():
+            if system_state.should_show_visual():
                 frame_height, frame_width = annotated_frame.shape[:2]
                 center_x, center_y = frame_width // 2, frame_height // 2
                 cv2.circle(annotated_frame, (center_x, center_y), 30, (0, 0, 255), -1)  # Red circle

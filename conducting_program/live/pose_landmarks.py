@@ -154,7 +154,7 @@ class PoseLandmarks:
         # Calculate dot product
         dot_product = v1_x * v2_x + v1_y * v2_y
         
-        # Calculate cosine of angle (clamp to avoid numerical errors)
+        # Calculate cosine of angle 
         cos_angle = dot_product / (magnitude_1 * magnitude_2)
         cos_angle = max(-1.0, min(1.0, cos_angle))
         

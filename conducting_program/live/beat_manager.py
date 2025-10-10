@@ -51,17 +51,14 @@ class BeatManager:
         if self.bpm_thread:
             self.bpm_thread.join(timeout=0.1)
         print("BeatManager stopped")
-    
+
     def _beat_worker(self):
         """Main beat timing thread"""
         while self.is_running:
-            # Sleep for exactly one beat interval
-            time.sleep(self.beat_interval)
-            
-            # Wake up and trigger the beat
-            if self.is_running:  # Check again in case we stopped during sleep
-                self._trigger_beat(time.time())
-    
+            self._trigger_beat(time.time())
+        
+            time.sleep(self.beat_interval) # Sleep for exactly one beat interval
+        
     def _trigger_beat(self, beat_time):
         """Trigger beat: spawn daemon threads for sound and visual."""
         # Update beat tracking
@@ -72,13 +69,19 @@ class BeatManager:
         
         print(f"Beat {self.current_beat}/{self.beats_per_measure} (Measure {self.measure_count})")
         
-        # Spawn daemon thread for sound (non-blocking)
-        threading.Thread(target=self.sound_manager.play_metronome_sound, daemon=True).start()
-        
-        # Set visual flag (checked by live_display per frame)
-        with self.visual_lock:
-            self.show_visual = True
-            self.visual_start_time = beat_time
+        # Only play sound and show visual after warmup measure (measure 0)
+        if self.measure_count >= 1:
+            # Spawn daemon thread for sound (non-blocking)
+            threading.Thread(target=self.sound_manager.play_metronome_sound, daemon=True).start()
+
+            # Set visual flag (checked by live_display per frame)
+            with self.visual_lock:
+                self.show_visual = True
+                self.visual_start_time = beat_time
+                
+        elif self.measure_count == 0:
+            # Warmup measure: initialize audio system silently
+            threading.Thread(target=self._warmup_audio, daemon=True).start()
     
     def should_show_visual(self):
         """Check if visual should be shown (called by live_display each frame)."""
@@ -97,3 +100,12 @@ class BeatManager:
     def get_measure_count(self):
         """Get the current measure number."""
         return self.measure_count
+    
+    def _warmup_audio(self):
+        """Warmup the audio system during the warmup measure."""
+        # Pre-initialize the audio system by calling the sound manager's warmup
+        try:
+            self.sound_manager.warmup_audio_system()
+            print("Audio system warming up...")
+        except Exception as e:
+            print(f"Audio warmup failed: {e}")

@@ -24,7 +24,8 @@ class State(Enum): # Set Enum values
 
 class SystemState:
     def __init__(self, settings):
-        self.current_state = SetupState()  # Start with setup state
+        # self.current_state = SetupState() # Start with setup state
+        self.current_state = CountdownState(self)  # Start with setup state
         self.settings = settings  # Store settings for lazy BeatManager initialization
         self.beat_manager = None  # Lazy initialization - only create when needed
     
@@ -53,23 +54,38 @@ class SystemState:
     def is_right_elbow_raised(self):
         return self.current_state.is_right_elbow_raised()
     
-    # -------------------- Beat Manager --------------------
+    def should_show_visual(self):
+        return self.current_state.should_show_visual()
     
+    # -------------------- Beat Manager --------------------
+
     def get_beat_manager(self):
         """Lazy initialization: create BeatManager only when first requested."""
         if self.beat_manager is None:
             print("Initializing BeatManager...")
             self.beat_manager = BeatManager(self.settings)
         return self.beat_manager
+    
+    def start_beat_manager(self):
+        """Start the BeatManager (called by CountdownState)."""
+        beat_manager = self.get_beat_manager()
+        beat_manager.start()
+        print("BeatManager started")
+    
+    def stop_beat_manager(self):
+        """Stop the BeatManager."""
+        if self.beat_manager:
+            self.beat_manager.stop()
+            print("BeatManager stopped")
 
     # -------------------- State Transition --------------------
     
     def change_state(self, new_state, clock_manager):
         """Change to a new state and perform any necessary initialization."""
         if new_state == State.COUNTDOWN.value:
-            self.current_state = CountdownState()
+            self.current_state = CountdownState(self)
         elif new_state == State.PROCESSING.value:
-            self.current_state = ProcessingState(clock_manager)
+            self.current_state = ProcessingState(clock_manager, self)
             clock_manager.start_session_clock()
         elif new_state == State.ENDING.value:
             self.current_state = EndingState()
@@ -90,7 +106,7 @@ class SetupState:
         self.first_frame = True
         
         # Configuration
-        self.movement_hold_duration = 1.0  # Hold hands up for 1 second
+        self.movement_hold_duration = 2.0  # Hold hands up for 2 second
         self.significant_movement_threshold = 0.1
         
         print("=== SETUP PHASE ===")
@@ -102,6 +118,9 @@ class SetupState:
     
     def has_visual_beats(self):
         return False  # SetupState doesn't have visual beats
+    
+    def should_show_visual(self):
+        return False  # SetupState doesn't show visual beats
     
     # -------------------- Frame Processing --------------------
    
@@ -160,9 +179,10 @@ class SetupState:
             return self.wait_for_start_movement(pose_landmarks, clock_manager)
 
 class CountdownState:
-    def __init__(self):
+    def __init__(self, system_state):
         # Values initialized on first frame
         self.beats_per_measure = None
+        self.system_state = system_state
         
         # State tracking
         self.first_frame = True
@@ -174,35 +194,40 @@ class CountdownState:
     def get_state_name(self):
         return State.COUNTDOWN.value
     
+    def should_show_visual(self):
+        return self.system_state.get_beat_manager().should_show_visual()
+    
     # -------------------- Frame Processing --------------------
     
-    def _initialize_first_frame(self, beat_manager):
+    def _initialize_first_frame(self):
         """Initialize countdown on the first frame."""
-        if beat_manager:
-            beat_manager.start()
-            self.beats_per_measure = beat_manager.beats_per_measure
-            print(f"Countdown started: {self.beats_per_measure} beats")
+        self.system_state.start_beat_manager()
+        beat_manager = self.system_state.get_beat_manager()
+        self.beats_per_measure = beat_manager.beats_per_measure
+        print(f"Countdown started: {self.beats_per_measure} beats")
     
-    def _check_countdown_complete(self, beat_manager):
-        """Check if one full measure has completed."""
-        if beat_manager and beat_manager.get_measure_count() >= 1:
+    def _check_countdown_complete(self):
+        """Check if three full measures have completed."""
+        beat_manager = self.system_state.get_beat_manager()
+        if beat_manager.get_measure_count() >= 3: # 3 represetns the number of measures count down phase takes 
             print("GO! Transition to Processing")
             return State.PROCESSING.value
         return State.COUNTDOWN.value
     
+    
     # -------------------- Main Entry Point --------------------
     
-    def main(self, pose_landmarks, clock_manager, beat_manager=None):
-        """Countdown: Start BeatManager and wait for one full measure."""
+    def main(self, pose_landmarks, clock_manager):
+        """Countdown: Start BeatManager and wait for three full measures (1 warmup + 2 audio/visual)."""
         if self.first_frame:
-            self._initialize_first_frame(beat_manager)
+            self._initialize_first_frame()
             self.first_frame = False
             return State.COUNTDOWN.value
         else:
-            return self._check_countdown_complete(beat_manager)
+            return self._check_countdown_complete()
 
 class ProcessingState:
-    def __init__(self, clock_manager):
+    def __init__(self, clock_manager, system_state):
         # Values initialized on first frame
         self.reference_midpoint = None
         self.last_midpoint_checked = None
@@ -217,6 +242,7 @@ class ProcessingState:
         self.mirror = MirrorDetection()
         self.elbow = ElbowDetection()
         self.clock_manager = clock_manager
+        self.system_state = system_state
 
         print("=== PROCESSING PHASE ===")
 
@@ -244,6 +270,9 @@ class ProcessingState:
     
     def is_right_elbow_raised(self):
         return self.elbow.get_watch_right_elbow()
+    
+    def should_show_visual(self):
+        return self.system_state.get_beat_manager().should_show_visual()
     
     # -------------------- Midpoint Processing --------------------
     
@@ -338,6 +367,9 @@ class EndingState:
     
     def get_state_name(self):
         return State.ENDING.value
+    
+    def should_show_visual(self):
+        return False  # EndingState doesn't show visual beats
     
     # -------------------- Main Entry Point --------------------
     

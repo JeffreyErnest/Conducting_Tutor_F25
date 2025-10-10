@@ -37,4 +37,14 @@ class SoundManager:
         """Helper to play sound in a separate thread."""
         if sound:
             play(sound)
+    
+    def warmup_audio_system(self):
+        """Pre-initialize the audio system to prevent first-play delays."""
+        try:
+            # Create a very short silent audio segment to initialize pydub's audio system
+            silent_sound = AudioSegment.silent(duration=1)  # 1ms silent audio
+            # This initializes the audio system without making any sound
+            play(silent_sound)
+        except Exception as e:
+            print(f"Audio system warmup failed: {e}")
 
